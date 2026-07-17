@@ -261,7 +261,7 @@ function buildScenarioCandles(scenario) {
 buildScenarioCandles(activeScenario);
 const launchCandles = candles.map((candle) => ({ ...candle }));
 
-const STARTING_PRACTICE_CAPITAL = 10000;
+const STARTING_PRACTICE_CAPITAL = 2500;
 const currencyFormatter = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 
 const launch = document.querySelector("#launch");
@@ -287,18 +287,16 @@ const replayMessage = document.querySelector("#replayMessage");
 const chartCoachCue = document.querySelector("#chartCoachCue");
 const chartCoachCueText = document.querySelector("#chartCoachCueText");
 const revealWalkthrough = document.querySelector("#revealWalkthrough");
-const revealProgress = document.querySelector("#revealProgress");
-const revealAutoplay = document.querySelector("#revealAutoplay");
 const revealText = document.querySelector("#revealText");
-const revealHeading = document.querySelector("#revealHeading");
 const revealBody = document.querySelector("#revealBody");
-const revealSummary = document.querySelector("#revealSummary");
-const revealBack = document.querySelector("#revealBack");
-const revealPause = document.querySelector("#revealPause");
-const revealReplayVoice = document.querySelector("#revealReplayVoice");
-const revealRestart = document.querySelector("#revealRestart");
-const revealSkip = document.querySelector("#revealSkip");
-const revealContinue = document.querySelector("#revealContinue");
+const reviewPosterNext = document.querySelector("#reviewPosterNext");
+const tradeDebriefSummary = document.querySelector("#tradeDebriefSummary");
+const debriefDecisionQuality = document.querySelector("#debriefDecisionQuality");
+const growthMetrics = document.querySelector("#growthMetrics");
+const growthFallback = document.querySelector("#growthFallback");
+const growthTrend = document.querySelector("#growthTrend");
+const growthPattern = document.querySelector("#growthPattern");
+const debriefTakeaway = document.querySelector("#debriefTakeaway");
 const chartStudyPanel = document.querySelector("#chartStudyPanel");
 const studyModeStatus = document.querySelector("#studyModeStatus");
 const studySupportButton = document.querySelector("#studySupport");
@@ -377,13 +375,13 @@ const stepName = document.querySelector("#stepName");
 const progressFill = document.querySelector("#progressFill");
 
 const stepMeta = {
-  observe: { number: 1, name: "Read the chart" },
-  act: { number: 2, name: "Choose an action" },
-  plan: { number: 3, name: "Plan the risk" },
-  review: { number: 4, name: "Lock the decision" },
-  commit: { number: 4, name: "Commit the capital" },
-  replay: { number: 5, name: "Watch history unfold" },
-  results: { number: 5, name: "Decision debrief" }
+  observe: { number: 1, name: "Market Analysis" },
+  act: { number: 2, name: "Trade Decision" },
+  plan: { number: 3, name: "Order Entry" },
+  review: { number: 3, name: "Order Entry" },
+  commit: { number: 3, name: "Order Entry" },
+  replay: { number: 4, name: "Guided Review" },
+  results: { number: 5, name: "Trade Debrief" }
 };
 
 let currentStep = "observe";
@@ -426,6 +424,14 @@ let timerState = { mode: "standard", total: 90, remaining: 90, paused: false, ex
 let lastLoadingQuote = -1;
 let launchChartAnimationFrame = null;
 let practiceCapital = STARTING_PRACTICE_CAPITAL;
+let practiceAccount = {
+  cash: STARTING_PRACTICE_CAPITAL,
+  positionUnits: 0,
+  positionEntry: 0,
+  positionMark: 0,
+  unrealizedPL: 0,
+  realizedPL: 0
+};
 let practiceOutcomeApplied = false;
 let lockedDecision = null;
 let capitalAnimationFrame = null;
@@ -440,6 +446,11 @@ let browserSpeechTesting = false;
 let activeCoachAudio = null;
 let activeCoachObjectUrl = null;
 let postReplaySequenceId = 0;
+let guidedReviewPhase = "idle";
+let guidedReviewSequenceId = 0;
+let chartResizeObserver = null;
+let analysisAdvanceTimer = null;
+let actionAdvanceTimer = null;
 let lastPositionSource = "amount";
 let lastRiskLevel = null;
 let capitalCommitted = false;
@@ -449,14 +460,8 @@ let heartbeatBeat = 0;
 let humorAnimationsEnabled = true;
 let fallingKnifeMistake = false;
 let lastCoachPersonalityLine = "";
-let revealStageIndex = -1;
-let revealIsSummary = false;
-let revealPaused = false;
-let revealTransitioning = false;
-let revealInteractionHold = false;
-let revealAutoplayTimer = null;
-let revealVoiceMode = "text";
-let revealCompletion = null;
+let automatedReviewToken = 0;
+const metricAnimations = new WeakMap();
 const sessionResults = new Map();
 
 const chartSmartConfig = window.CHART_SMART_CONFIG || {};
@@ -501,7 +506,7 @@ function applyScenarioPresentation() {
   document.querySelector('input[name="entry"]').value = activeScenario.plan.entry.toFixed(2);
   document.querySelector('input[name="stop"]').value = activeScenario.plan.stop.toFixed(2);
   document.querySelector('input[name="target"]').value = activeScenario.plan.target.toFixed(2);
-  const amount = Number(document.querySelector("#positionAmount").value) || 3200;
+  const amount = Number(document.querySelector("#positionAmount").value) || 800;
   document.querySelector("#positionUnits").value = (amount / activeScenario.plan.entry).toFixed(2);
 }
 
@@ -682,6 +687,7 @@ function drawTradeChart() {
   lastChartGeometry = geometry;
   drawTradePlanOverlay(context, geometry);
   if (crosshair.active) drawCrosshair(context, geometry);
+  drawTeachingSpotlight(context, geometry);
   drawCoachAttention(context, geometry);
   if (xrayProgress > 0) drawXray(context, geometry);
   drawUserGuides(context, width, height);
@@ -981,6 +987,70 @@ function annotationToneColor(tone, fallback) {
   return fallback;
 }
 
+function teachingFocusBounds(geometry) {
+  if (!chartTeachingFocus) return null;
+  const annotation = activeScenario.annotation;
+  const focus = chartTeachingFocus;
+  let points = [];
+  if (focus === "trend") points = (annotation.trend?.points || []).map((point) => annotationPoint(point, geometry));
+  if (focus === "pattern") points = (annotation.pattern?.polygon || []).map((point) => annotationPoint(point, geometry));
+  if ((focus === "support" || focus === "resistance") && annotation[focus]) {
+    const level = annotation[focus];
+    points = [pointFor(level.start, level.price, geometry), pointFor(level.end, level.price, geometry)];
+  }
+  if ((focus === "breakout" || focus === "outcome") && annotation.breakout) {
+    const startIndex = annotation.breakout.index;
+    const endIndex = focus === "outcome" ? visibleCloses.length + revealedFuture - 1 : startIndex;
+    for (let index = startIndex; index <= Math.max(startIndex, endIndex); index += 1) {
+      points.push(pointFor(index, candles[index].high, geometry), pointFor(index, candles[index].low, geometry));
+    }
+  }
+  if (focus === "volume") {
+    points = (annotation.volume?.indexes || []).flatMap((index) => {
+      const candlePoint = pointFor(index, candles[index].close, geometry);
+      const volumeTop = geometry.volumeBase - (candles[index].volume / geometry.maxVolume) * geometry.volumeHeight;
+      return [{ x: candlePoint.x, y: volumeTop }, { x: candlePoint.x, y: geometry.volumeBase }];
+    });
+  }
+  if (focus === "invalidation") {
+    const stopY = priceScale(activeScenario.plan.stop, geometry.minPrice, geometry.maxPrice, geometry.top, geometry.priceHeight);
+    points = [
+      pointFor(Math.max(0, visibleCloses.length - 12), activeScenario.plan.stop, geometry),
+      pointFor(visibleCloses.length - 1, activeScenario.plan.stop, geometry),
+      { x: pointFor(visibleCloses.length - 1, activeScenario.plan.stop, geometry).x, y: stopY }
+    ];
+  }
+  if (points.length === 0) return null;
+  const paddingX = Math.max(22, geometry.slot * (focus === "breakout" ? 1.7 : 1));
+  const paddingY = focus === "volume" ? 18 : 34;
+  const xValues = points.map((point) => point.x);
+  const yValues = points.map((point) => point.y);
+  return {
+    left: Math.max(geometry.left, Math.min(...xValues) - paddingX),
+    right: Math.min(geometry.width - geometry.right, Math.max(...xValues) + paddingX),
+    top: Math.max(geometry.top, Math.min(...yValues) - paddingY),
+    bottom: Math.min(geometry.volumeBase, Math.max(...yValues) + paddingY)
+  };
+}
+
+function drawTeachingSpotlight(context, geometry) {
+  if (!chartTeachingFocus || chartTeachingIntensity <= 0 || guidedReviewPhase !== "guidedTeaching") return;
+  const bounds = teachingFocusBounds(geometry);
+  if (!bounds) return;
+  const plotRight = geometry.width - geometry.right;
+  const opacity = 0.5 * Math.max(0, Math.min(1, chartTeachingIntensity));
+  context.save();
+  context.fillStyle = `rgba(1, 7, 7, ${opacity})`;
+  context.fillRect(geometry.left, geometry.top, plotRight - geometry.left, bounds.top - geometry.top);
+  context.fillRect(geometry.left, bounds.bottom, plotRight - geometry.left, geometry.volumeBase - bounds.bottom);
+  context.fillRect(geometry.left, bounds.top, bounds.left - geometry.left, bounds.bottom - bounds.top);
+  context.fillRect(bounds.right, bounds.top, plotRight - bounds.right, bounds.bottom - bounds.top);
+  context.strokeStyle = `rgba(205, 225, 216, ${0.14 * chartTeachingIntensity})`;
+  context.lineWidth = 1;
+  context.strokeRect(bounds.left, bounds.top, bounds.right - bounds.left, bounds.bottom - bounds.top);
+  context.restore();
+}
+
 function drawCoachAttention(context, geometry) {
   if (!chartTeachingFocus || chartTeachingIntensity <= 0) return;
   const annotation = activeScenario.annotation;
@@ -991,6 +1061,7 @@ function drawCoachAttention(context, geometry) {
   const blue = "#8bb5ff";
   const amber = "#f0be67";
   const plotRight = geometry.width - geometry.right;
+  const showLabels = guidedReviewPhase !== "guidedTeaching";
 
   context.save();
   context.beginPath();
@@ -1005,7 +1076,7 @@ function drawCoachAttention(context, geometry) {
     context.strokeStyle = amber;
     context.lineWidth = 2.4;
     context.shadowColor = amber;
-    context.shadowBlur = 14;
+    context.shadowBlur = 9;
     context.beginPath();
     points.forEach((point, index) => index === 0 ? context.moveTo(point.x, point.y) : context.lineTo(point.x, point.y));
     context.stroke();
@@ -1016,7 +1087,7 @@ function drawCoachAttention(context, geometry) {
     });
     context.shadowBlur = 0;
     const middle = points[Math.floor(points.length / 2)];
-    drawAttentionLabel(context, annotation.trend.label, middle.x - 42, middle.y + 16, geometry, amber);
+    if (showLabels) drawAttentionLabel(context, annotation.trend.label, middle.x - 42, middle.y + 16, geometry, amber);
   }
 
   if ((focus === "support" || focus === "resistance") && annotation[focus]) {
@@ -1029,7 +1100,7 @@ function drawCoachAttention(context, geometry) {
     context.strokeStyle = color;
     context.lineWidth = 2;
     context.shadowColor = color;
-    context.shadowBlur = 15;
+    context.shadowBlur = 9;
     context.setLineDash(focus === "resistance" ? [7, 5] : []);
     context.beginPath();
     context.moveTo(start.x - geometry.slot * 0.5, start.y);
@@ -1037,7 +1108,7 @@ function drawCoachAttention(context, geometry) {
     context.stroke();
     context.setLineDash([]);
     context.shadowBlur = 0;
-    drawAttentionLabel(context, level.label, focus === "support" ? start.x : end.x - 122, focus === "support" ? start.y + 15 : end.y - 28, geometry, color);
+    if (showLabels) drawAttentionLabel(context, level.label, focus === "support" ? start.x : end.x - 122, focus === "support" ? start.y + 15 : end.y - 28, geometry, color);
   }
 
   if (focus === "pattern" && annotation.pattern?.polygon?.length) {
@@ -1050,7 +1121,7 @@ function drawCoachAttention(context, geometry) {
     context.closePath();
     context.fill();
     context.stroke();
-    drawAttentionLabel(context, annotation.pattern.label, points[0].x + 14, points[0].y - 28, geometry, blue);
+    if (showLabels) drawAttentionLabel(context, annotation.pattern.label, points[0].x + 14, points[0].y - 28, geometry, blue);
   }
 
   if (focus === "breakout" && annotation.breakout) {
@@ -1060,14 +1131,11 @@ function drawCoachAttention(context, geometry) {
     const high = pointFor(index, candles[index].high, geometry);
     const low = pointFor(index, candles[index].low, geometry);
     context.fillStyle = `${color}26`;
-    context.strokeStyle = color;
-    context.lineWidth = 2.4;
     context.shadowColor = color;
-    context.shadowBlur = 18;
+    context.shadowBlur = 10;
     context.fillRect(close.x - geometry.slot * 0.72, high.y - 9, geometry.slot * 1.44, low.y - high.y + 18);
-    context.strokeRect(close.x - geometry.candleWidth, high.y - 7, geometry.candleWidth * 2, low.y - high.y + 14);
     context.shadowBlur = 0;
-    drawAttentionLabel(context, annotation.breakout.label, close.x + 12, close.y - 42, geometry, color);
+    if (showLabels) drawAttentionLabel(context, annotation.breakout.label, close.x + 12, close.y - 42, geometry, color);
   }
 
   if (focus === "volume" && annotation.volume?.indexes?.length) {
@@ -1076,17 +1144,28 @@ function drawCoachAttention(context, geometry) {
       const candlePoint = pointFor(index, candles[index].close, geometry);
       const volumeTop = geometry.volumeBase - (candles[index].volume / geometry.maxVolume) * geometry.volumeHeight;
       context.fillStyle = `${color}2e`;
-      context.strokeStyle = color;
-      context.lineWidth = 2.2;
       context.shadowColor = color;
-      context.shadowBlur = 17;
+      context.shadowBlur = 10;
       context.fillRect(candlePoint.x - geometry.slot * 0.65, volumeTop - 8, geometry.slot * 1.3, geometry.volumeBase - volumeTop + 9);
-      context.strokeRect(candlePoint.x - geometry.slot * 0.65, volumeTop - 8, geometry.slot * 1.3, geometry.volumeBase - volumeTop + 9);
       return { x: candlePoint.x, y: volumeTop };
     });
     context.shadowBlur = 0;
     const labelPoint = points[points.length - 1];
-    drawAttentionLabel(context, annotation.volume.label, labelPoint.x + 14, labelPoint.y + 5, geometry, color);
+    if (showLabels) drawAttentionLabel(context, annotation.volume.label, labelPoint.x + 14, labelPoint.y + 5, geometry, color);
+  }
+
+  if (focus === "invalidation") {
+    const y = priceScale(activeScenario.plan.stop, geometry.minPrice, geometry.maxPrice, geometry.top, geometry.priceHeight);
+    const startX = pointFor(Math.max(0, visibleCloses.length - 12), activeScenario.plan.stop, geometry).x;
+    const endX = pointFor(visibleCloses.length - 1, activeScenario.plan.stop, geometry).x;
+    context.strokeStyle = "#ff8e96";
+    context.lineWidth = 2;
+    context.setLineDash([6, 5]);
+    context.beginPath();
+    context.moveTo(startX, y);
+    context.lineTo(endX, y);
+    context.stroke();
+    context.setLineDash([]);
   }
 
   if (originalFocus === "study" && studyPoint) {
@@ -1210,41 +1289,21 @@ function drawXray(context, geometry) {
   const annotation = activeScenario.annotation;
   const green = "#57f0aa";
   const blue = "#8bb5ff";
-  const amber = "#f0be67";
   const plotRight = geometry.width - geometry.right;
 
   context.save();
   context.globalAlpha = opacity;
   context.lineCap = "round";
   context.lineJoin = "round";
-  context.fillStyle = `rgba(4, 12, 10, ${0.18 * progress})`;
-  context.fillRect(0, 0, plotRight, geometry.top + geometry.priceHeight);
   context.beginPath();
   context.rect(geometry.left, geometry.top, plotRight - geometry.left, geometry.volumeBase - geometry.top);
   context.clip();
-
-  if (annotation.trend?.points?.length >= 2) {
-    const start = annotationPoint(annotation.trend.points[0], geometry);
-    const end = annotationPoint(annotation.trend.points[annotation.trend.points.length - 1], geometry);
-    drawAnimatedLine(context, start, end, phase(0.02, 0.2), amber, 3);
-  }
 
   (annotation.pattern?.lines || []).forEach((line, index) => {
     const start = annotationPoint(line[0], geometry);
     const end = annotationPoint(line[1], geometry);
     drawAnimatedLine(context, start, end, phase(0.16 + index * 0.06, 0.4 + index * 0.06), blue, 2);
   });
-
-  if (annotation.support) {
-    const start = pointFor(annotation.support.start, annotation.support.price, geometry);
-    const end = pointFor(annotation.support.end, annotation.support.price, geometry);
-    drawAnimatedLine(context, start, end, phase(0.47, 0.61), green, 1.8);
-  }
-  if (annotation.resistance) {
-    const start = pointFor(annotation.resistance.start, annotation.resistance.price, geometry);
-    const end = pointFor(annotation.resistance.end, annotation.resistance.price, geometry);
-    drawAnimatedLine(context, start, end, phase(0.62, 0.7), amber, 1.8);
-  }
 
   if (progress > 0.71 && annotation.pattern?.polygon?.length) {
     const reveal = phase(0.71, 0.81);
@@ -1255,16 +1314,6 @@ function drawXray(context, geometry) {
     points.forEach((point, index) => index === 0 ? context.moveTo(point.x, point.y) : context.lineTo(point.x, point.y));
     context.closePath();
     context.fill();
-    (annotation.trend?.points || []).forEach((definition, index) => {
-      const point = annotationPoint(definition, geometry);
-      context.beginPath();
-      context.arc(point.x, point.y, 3.5, 0, Math.PI * 2);
-      context.fillStyle = index % 2 === 0 ? amber : blue;
-      context.fill();
-      context.strokeStyle = "#081310";
-      context.lineWidth = 1;
-      context.stroke();
-    });
   }
 
   if (progress > 0.82 && annotation.breakout) {
@@ -1277,9 +1326,6 @@ function drawXray(context, geometry) {
     context.globalAlpha = reveal * opacity;
     context.fillStyle = `${color}20`;
     context.fillRect(close.x - geometry.slot, high.y - 18, geometry.slot * 3, low.y - high.y + 36);
-    context.strokeStyle = color;
-    context.lineWidth = 2;
-    context.strokeRect(close.x - geometry.candleWidth * 1.2, high.y - 9, geometry.candleWidth * 2.4, low.y - high.y + 18);
 
     (annotation.volume?.indexes || []).forEach((volumeIndex) => {
       const volumePoint = pointFor(volumeIndex, candles[volumeIndex].close, geometry);
@@ -1287,24 +1333,12 @@ function drawXray(context, geometry) {
       const volumeColor = annotationToneColor(annotation.volume.tone, blue);
       context.fillStyle = `${volumeColor}24`;
       context.fillRect(volumePoint.x - geometry.slot * 0.65, volumeTop - 8, geometry.slot * 1.3, geometry.volumeBase - volumeTop + 10);
-      context.strokeStyle = volumeColor;
-      context.strokeRect(volumePoint.x - geometry.slot * 0.65, volumeTop - 8, geometry.slot * 1.3, geometry.volumeBase - volumeTop + 10);
     });
 
     if (progress > 0.94) {
-      const supportPoint = annotation.support ? pointFor(annotation.support.end, annotation.support.price, geometry) : null;
-      const resistancePoint = annotation.resistance ? pointFor(annotation.resistance.end, annotation.resistance.price, geometry) : null;
       drawAttentionLabel(context, annotation.breakout.label, close.x + 12, close.y - 32, geometry, color);
-      if (supportPoint) drawAttentionLabel(context, annotation.support.label, supportPoint.x - 120, supportPoint.y + 12, geometry, green);
-      if (resistancePoint) drawAttentionLabel(context, annotation.resistance.label, resistancePoint.x - 120, resistancePoint.y - 28, geometry, amber);
       const patternPoint = annotationPoint(annotation.pattern.polygon[0], geometry);
       drawAttentionLabel(context, annotation.pattern.label, patternPoint.x, patternPoint.y - 28, geometry, blue);
-      if (annotation.volume?.indexes?.length) {
-        const volumeIndex = annotation.volume.indexes[annotation.volume.indexes.length - 1];
-        const volumePoint = pointFor(volumeIndex, candles[volumeIndex].close, geometry);
-        const volumeTop = geometry.volumeBase - (candles[volumeIndex].volume / geometry.maxVolume) * geometry.volumeHeight;
-        drawAttentionLabel(context, annotation.volume.label, volumePoint.x + 10, volumeTop + 4, geometry, annotationToneColor(annotation.volume.tone, blue));
-      }
     }
   }
   context.restore();
@@ -1555,6 +1589,7 @@ function getPatterns() {
 
 function setStep(step) {
   currentStep = step;
+  labWorkspace.dataset.step = step;
   document.querySelectorAll(".form-step").forEach((panel) => {
     panel.classList.toggle("is-active", panel.dataset.step === step);
   });
@@ -1564,7 +1599,26 @@ function setStep(step) {
     stepName.textContent = meta.name;
     progressFill.style.width = `${meta.number * 20}%`;
   }
-  document.querySelector("#decisionPanel").scrollIntoView({ behavior: "smooth", block: "start" });
+  decisionPanel.scrollTop = 0;
+}
+
+function scheduleAutomaticAdvance(sourceStep, targetStep, delay = 420) {
+  const timerName = sourceStep === "observe" ? "analysis" : "action";
+  const activeTimer = timerName === "analysis" ? analysisAdvanceTimer : actionAdvanceTimer;
+  if (activeTimer) window.clearTimeout(activeTimer);
+  const panel = decisionForm.querySelector(`[data-step="${sourceStep}"]`);
+  panel?.classList.add("is-confirming");
+  const timer = window.setTimeout(() => {
+    if (sourceStep === "observe") analysisAdvanceTimer = null;
+    else actionAdvanceTimer = null;
+    panel?.classList.remove("is-confirming");
+    if (currentStep !== sourceStep) return;
+    if (sourceStep === "observe" && !validateObserve()) return;
+    if (sourceStep === "act" && !validateAct()) return;
+    setStep(targetStep);
+  }, reducedMotionQuery.matches ? 80 : delay);
+  if (timerName === "analysis") analysisAdvanceTimer = timer;
+  else actionAdvanceTimer = timer;
 }
 
 function showError(id, message) {
@@ -1577,7 +1631,6 @@ function validateObserve() {
   document.querySelector("#observeError").textContent = "";
   if (!getValue("trend")) return showError("observeError", "Choose the trend you see before continuing.");
   if (getPatterns().length === 0) return showError("observeError", "Choose a pattern, or select No Clear Pattern.");
-  if (!getValue("confidence")) return showError("observeError", "Rate your confidence before continuing.");
   return true;
 }
 
@@ -1591,11 +1644,7 @@ function validateAct() {
 function validatePlan() {
   document.querySelector("#planError").textContent = "";
   const action = getValue("action");
-  if (action === "Wait" || action === "Skip") {
-    const reason = (getValue("reason") || "").trim();
-    if (reason.length < 8) return showError("planError", "Explain what makes waiting or skipping the disciplined choice.");
-    return true;
-  }
+  if (action === "Wait" || action === "Skip") return true;
 
   const entry = Number(getValue("entry"));
   const stop = Number(getValue("stop"));
@@ -1605,7 +1654,8 @@ function validatePlan() {
   if (![entry, stop, target, positionAmount, positionUnits].every((value) => Number.isFinite(value) && value > 0)) {
     return showError("planError", "Complete the prices and choose how much practice capital to commit.");
   }
-  if (positionAmount > practiceCapital + 0.01) return showError("planError", "The planned position cannot exceed the available practice account.");
+  const accountError = orderValidationMessage(action, positionAmount, positionUnits);
+  if (accountError) return showError("planError", accountError);
   if (action === "Buy" && !(stop < entry && target > entry)) {
     return showError("planError", "For a buy, place the stop below entry and the target above entry.");
   }
@@ -1618,15 +1668,30 @@ function validatePlan() {
 function updatePlanMode() {
   const action = getValue("action");
   const isTrade = action === "Buy" || action === "Sell";
+  const orderSide = document.querySelector("#orderSide");
+  const submitOrder = document.querySelector("#submitOrder");
   document.querySelector("#tradeFields").hidden = !isTrade;
-  document.querySelector("#reasonField").hidden = isTrade;
-  document.querySelector("#reasonAction").textContent = action === "Skip" ? "skipping" : "waiting";
+  document.querySelector("#reasonField").hidden = true;
   document.querySelector("#lockDecision").textContent = isTrade ? "COMMIT CAPITAL" : "COMMIT DECISION";
+  orderSide.textContent = action || "Order";
+  orderSide.dataset.side = String(action || "").toLowerCase();
+  submitOrder.textContent = isTrade ? `Place ${action} Order` : "Submit Decision";
+  document.querySelector("#maxOrder").textContent = action === "Sell" ? "Max Sell" : "Max Buy";
   document.querySelector("#planIntro").textContent = isTrade
-    ? "Define the exit, then decide how much of the practice account belongs behind the idea."
-    : "Discipline sometimes means declining a trade. Name the evidence you still need.";
+    ? "Set the execution and define where your thesis is invalidated."
+    : "Name the evidence that would change this decision.";
   if (isTrade) syncPositionInputs(lastPositionSource, false);
   else drawTradeChart();
+}
+
+function updateOrderType() {
+  const orderType = new FormData(decisionForm).get("orderType") || "Market";
+  const entryInput = document.querySelector('input[name="entry"]');
+  const entryLabel = document.querySelector("#entryFieldLabel");
+  const isMarket = orderType === "Market";
+  entryInput.readOnly = isMarket;
+  entryLabel.textContent = isMarket ? "Market Price" : "Limit Price";
+  entryInput.closest(".number-field").classList.toggle("is-readonly", isMarket);
 }
 
 function riskLevelFor(percent) {
@@ -1637,12 +1702,15 @@ function riskLevelFor(percent) {
 }
 
 function getTradePlan() {
-  const accountBalance = lockedDecision?.accountBalance ?? practiceCapital;
+  const account = currentPracticeAccount();
+  const accountBalance = lockedDecision?.accountBalance ?? account.totalValue;
   const entry = Number(getValue("entry"));
   const stop = Number(getValue("stop"));
   const target = Number(getValue("target"));
-  const units = Number(getValue("positionUnits"));
-  const positionValue = Number(getValue("positionAmount"));
+  const requestedUnits = Number(getValue("positionUnits"));
+  const requestedAmount = Number(getValue("positionAmount"));
+  const units = lastPositionSource === "units" ? requestedUnits : requestedAmount / entry;
+  const positionValue = lastPositionSource === "units" ? requestedUnits * entry : requestedAmount;
   const riskDistance = Math.abs(entry - stop);
   const rewardDistance = Math.abs(target - entry);
   const dollarsRisk = riskDistance * units;
@@ -1664,7 +1732,7 @@ function getTradePlan() {
     accountBalance,
     exposurePercent,
     accountRiskPercent,
-    remainingCash: Math.max(0, accountBalance - positionValue),
+    remainingCash: getValue("action") === "Sell" ? account.cash + positionValue : account.cash - positionValue,
     riskLevel: riskLevelFor(accountRiskPercent),
     valid: [entry, stop, target, units, positionValue, dollarsRisk, potentialGain, ratio]
       .every((value) => Number.isFinite(value) && value > 0)
@@ -1677,21 +1745,20 @@ function syncPositionInputs(source = lastPositionSource, announce = true) {
   const unitsInput = document.querySelector("#positionUnits");
   const percentInput = document.querySelector("#positionPercent");
   const entry = Math.max(0.01, Number(entryInput.value) || 0.01);
-  const account = Math.max(0, practiceCapital);
+  const account = currentPracticeAccount();
   let amount = Number(amountInput.value) || 0;
   let units = Number(unitsInput.value) || 0;
   let percent = Number(percentInput.value) || 0;
 
   if (source === "units") amount = units * entry;
-  else if (source === "percent") amount = account * (percent / 100);
-  amount = Math.max(0, Math.min(account, amount));
+  else if (source === "percent") amount = account.buyingPower * (percent / 100);
+  amount = Math.max(0, amount);
   units = amount / entry;
-  percent = account > 0 ? (amount / account) * 100 : 0;
+  percent = account.buyingPower > 0 ? (amount / account.buyingPower) * 100 : 0;
 
-  amountInput.max = account.toFixed(2);
-  if (source !== "amount" || Number(amountInput.value) > account) amountInput.value = amount.toFixed(2);
-  if (source !== "units" || units * entry > account) unitsInput.value = units.toFixed(2);
-  if (source !== "percent" || Number(percentInput.value) > 100) percentInput.value = percent.toFixed(1);
+  if (source !== "amount") amountInput.value = amount.toFixed(2);
+  if (source !== "units") unitsInput.value = units.toFixed(2);
+  percentInput.value = percent.toFixed(1);
   lastPositionSource = source;
   document.querySelectorAll("[data-position-method]").forEach((label) => {
     label.classList.toggle("is-active", label.dataset.positionMethod === source);
@@ -1701,10 +1768,16 @@ function syncPositionInputs(source = lastPositionSource, announce = true) {
 
 function renderTradePlanMetrics(announceRisk = false) {
   const plan = getTradePlan();
-  const exposure = Math.max(0, Math.min(100, plan.exposurePercent || 0));
-  planningAccountBalance.textContent = currencyFormatter.format(plan.accountBalance);
-  document.querySelector("#metricAvailableCash").textContent = currencyFormatter.format(plan.remainingCash || 0);
-  document.querySelector("#metricPositionValue").textContent = currencyFormatter.format(plan.positionValue || 0);
+  const account = currentPracticeAccount();
+  const action = getValue("action");
+  const positionAfter = action === "Sell"
+    ? Math.max(0, account.positionValue - (plan.positionValue || 0))
+    : account.positionValue + (plan.positionValue || 0);
+  renderPracticeAccountMetrics();
+  animateMetric(document.querySelector("#metricAvailableCash"), plan.remainingCash || 0);
+  animateMetric(document.querySelector("#metricPositionValue"), positionAfter);
+  animateMetric(document.querySelector("#metricBuyingPowerAfter"), plan.remainingCash || 0);
+  animateMetric(document.querySelector("#estimatedCost"), plan.positionValue || 0);
   document.querySelector("#metricPositionUnits").textContent = `${(plan.units || 0).toFixed(2)} units`;
   document.querySelector("#metricDollarsRisk").textContent = currencyFormatter.format(plan.dollarsRisk || 0);
   document.querySelector("#metricMaxLoss").textContent = currencyFormatter.format(plan.dollarsRisk || 0);
@@ -1712,11 +1785,6 @@ function renderTradePlanMetrics(announceRisk = false) {
   document.querySelector("#metricPotentialGain").textContent = currencyFormatter.format(plan.potentialGain || 0);
   document.querySelector("#riskRatio").textContent = plan.valid ? `${plan.ratio.toFixed(1)} : 1` : "--";
   document.querySelector("#accountRiskInput").value = (plan.accountRiskPercent || 0).toFixed(2);
-  allocationPosition.style.width = `${exposure}%`;
-  allocationCash.style.width = `${100 - exposure}%`;
-  document.querySelector("#allocationPositionLabel").textContent = `${exposure.toFixed(0)}%`;
-  document.querySelector("#allocationCashLabel").textContent = `${(100 - exposure).toFixed(0)}%`;
-
   const riskState = document.querySelector("#riskState");
   const level = plan.riskLevel;
   riskState.dataset.level = level.id;
@@ -1724,7 +1792,86 @@ function renderTradePlanMetrics(announceRisk = false) {
   document.querySelector("#riskNote").textContent = `You are risking ${(plan.accountRiskPercent || 0).toFixed(1)}% of the practice account on one idea.`;
   if (announceRisk && lastRiskLevel && lastRiskLevel !== level.id) playRiskLevelSound(level.id);
   lastRiskLevel = level.id;
+  const validationMessage = orderValidationMessage(action, plan.positionValue, plan.units);
+  document.querySelector("#planError").textContent = validationMessage;
+  document.querySelector("#submitOrder").disabled = Boolean(validationMessage) || !plan.valid;
   drawTradeChart();
+}
+
+function currentPracticeAccount(markPrice = practiceAccount.positionMark || practiceAccount.positionEntry) {
+  const positionValue = practiceAccount.positionUnits * (markPrice || 0);
+  const unrealizedPL = practiceAccount.positionUnits > 0
+    ? positionValue - practiceAccount.positionUnits * practiceAccount.positionEntry
+    : 0;
+  return {
+    cash: practiceAccount.cash,
+    positionValue,
+    unrealizedPL,
+    realizedPL: practiceAccount.realizedPL,
+    totalValue: practiceAccount.cash + positionValue,
+    buyingPower: practiceAccount.cash
+  };
+}
+
+function animateMetric(element, value, { signed = false, duration = 260 } = {}) {
+  if (!element) return;
+  const previousFrame = metricAnimations.get(element);
+  if (previousFrame) window.cancelAnimationFrame(previousFrame);
+  const from = Number(element.dataset.numericValue ?? value);
+  const to = Number.isFinite(value) ? value : 0;
+  const format = (amount) => signed && amount !== 0
+    ? `${amount > 0 ? "+" : "-"}${currencyFormatter.format(Math.abs(amount))}`
+    : currencyFormatter.format(amount);
+  if (reducedMotionQuery.matches || Math.abs(to - from) < 0.005) {
+    element.textContent = format(to);
+    element.dataset.numericValue = String(to);
+    return;
+  }
+  const startedAt = performance.now();
+  const frame = (now) => {
+    const progress = Math.min(1, (now - startedAt) / duration);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    const display = from + (to - from) * eased;
+    element.textContent = format(display);
+    element.dataset.numericValue = String(display);
+    if (progress < 1) metricAnimations.set(element, window.requestAnimationFrame(frame));
+    else element.dataset.numericValue = String(to);
+  };
+  metricAnimations.set(element, window.requestAnimationFrame(frame));
+}
+
+function renderPracticeAccountMetrics(markPrice) {
+  if (Number.isFinite(markPrice)) practiceAccount.positionMark = markPrice;
+  const account = currentPracticeAccount();
+  practiceCapital = account.totalValue;
+  animateMetric(planningAccountBalance, account.cash);
+  animateMetric(document.querySelector("#accountPositionValue"), account.positionValue);
+  animateMetric(document.querySelector("#accountUnrealizedPL"), account.unrealizedPL, { signed: true });
+  animateMetric(document.querySelector("#accountRealizedPL"), account.realizedPL, { signed: true });
+  animateMetric(document.querySelector("#metricAccountValue"), account.totalValue);
+  animateMetric(document.querySelector("#accountBuyingPower"), account.buyingPower);
+  practiceBalanceDisplay.textContent = currencyFormatter.format(account.totalValue);
+  practiceBalanceChange.textContent = practiceAccount.positionUnits > 0
+    ? `${account.unrealizedPL >= 0 ? "+" : "-"}${currencyFormatter.format(Math.abs(account.unrealizedPL))} unrealized`
+    : "Available account value";
+  practiceBalanceWidget.classList.toggle("is-gain", account.unrealizedPL > 0);
+  practiceBalanceWidget.classList.toggle("is-loss", account.unrealizedPL < 0);
+}
+
+function orderValidationMessage(action, positionAmount, positionUnits) {
+  if (action === "Buy" && positionAmount > practiceAccount.cash + 0.005) return "Order exceeds available buying power.";
+  if (action === "Sell" && positionUnits > practiceAccount.positionUnits + 0.0001) return "Order exceeds your current position.";
+  return "";
+}
+
+function applyMaximumOrder() {
+  const action = getValue("action");
+  const entry = Math.max(0.01, Number(document.querySelector('input[name="entry"]').value) || 0.01);
+  const amount = action === "Sell" ? practiceAccount.positionUnits * entry : practiceAccount.cash;
+  document.querySelector("#positionAmount").value = amount.toFixed(2);
+  document.querySelector("#positionUnits").value = (amount / entry).toFixed(2);
+  lastPositionSource = "amount";
+  syncPositionInputs("amount", true);
 }
 
 function renderPracticeCapital(change = null, idleLabel = "Current balance") {
@@ -2116,24 +2263,79 @@ function animatePracticeCapital(fromValue, toValue, change, action) {
   }, change === 0 ? 1800 : 3300);
 }
 
+function stagePracticeOrder() {
+  const action = getValue("action");
+  if (action !== "Buy" && action !== "Sell") {
+    renderPracticeAccountMetrics();
+    return;
+  }
+  const plan = getTradePlan();
+  if (action === "Buy") {
+    practiceAccount.cash = Math.max(0, practiceAccount.cash - plan.positionValue);
+    practiceAccount.positionUnits += plan.units;
+    practiceAccount.positionEntry = plan.entry;
+    practiceAccount.positionMark = plan.entry;
+    practiceAccount.unrealizedPL = 0;
+  } else {
+    const units = Math.min(plan.units, practiceAccount.positionUnits);
+    const proceeds = units * plan.entry;
+    const realized = units * (plan.entry - practiceAccount.positionEntry);
+    practiceAccount.cash += proceeds;
+    practiceAccount.positionUnits -= units;
+    practiceAccount.realizedPL += realized;
+    if (practiceAccount.positionUnits <= 0.0001) {
+      practiceAccount.positionUnits = 0;
+      practiceAccount.positionEntry = 0;
+      practiceAccount.positionMark = 0;
+    }
+  }
+  renderPracticeAccountMetrics();
+}
+
+function closePracticePosition(exitPrice) {
+  if (practiceAccount.positionUnits <= 0) return 0;
+  const proceeds = practiceAccount.positionUnits * exitPrice;
+  const costBasis = practiceAccount.positionUnits * practiceAccount.positionEntry;
+  const change = Math.round((proceeds - costBasis) * 100) / 100;
+  practiceAccount.cash = Math.round((practiceAccount.cash + proceeds) * 100) / 100;
+  practiceAccount.realizedPL = Math.round((practiceAccount.realizedPL + change) * 100) / 100;
+  practiceAccount.positionUnits = 0;
+  practiceAccount.positionEntry = 0;
+  practiceAccount.positionMark = 0;
+  practiceAccount.unrealizedPL = 0;
+  renderPracticeAccountMetrics();
+  return change;
+}
+
+function updatePracticePositionDuringReplay(markPrice) {
+  if (practiceAccount.positionUnits <= 0 || practiceOutcomeApplied) return;
+  const plan = getTradePlan();
+  if (markPrice <= plan.stop) {
+    practiceOutcomeApplied = true;
+    closePracticePosition(plan.stop);
+    return;
+  }
+  if (markPrice >= plan.target) {
+    practiceOutcomeApplied = true;
+    closePracticePosition(plan.target);
+    return;
+  }
+  renderPracticeAccountMetrics(markPrice);
+}
+
 function settlePracticeCapital({ animate = true } = {}) {
   if (practiceOutcomeApplied) return 0;
   practiceOutcomeApplied = true;
   const action = getValue("action");
-  let change = 0;
-
-  if (action === "Buy" || action === "Sell") {
-    const plan = getTradePlan();
-    const marketMove = scenarioMarketMovePercent() / 100;
-    const rawChange = plan.positionValue * (action === "Buy" ? marketMove : -marketMove);
-    change = rawChange >= 0
-      ? Math.min(rawChange, plan.potentialGain)
-      : -Math.min(Math.abs(rawChange), plan.dollarsRisk);
-  }
-
-  change = Math.round(change * 100) / 100;
   const previousCapital = practiceCapital;
-  practiceCapital = Math.max(0, Math.round((practiceCapital + change) * 100) / 100);
+  let change = 0;
+  if (action === "Buy" && practiceAccount.positionUnits > 0) {
+    const plan = getTradePlan();
+    const finalPrice = futureCloses[futureCloses.length - 1] || plan.entry;
+    change = closePracticePosition(Math.max(plan.stop, Math.min(plan.target, finalPrice)));
+  } else {
+    renderPracticeAccountMetrics();
+  }
   renderPracticeCapital(change);
   if (animate) animatePracticeCapital(previousCapital, practiceCapital, change, action);
   return change;
@@ -2153,15 +2355,13 @@ function buildSummary() {
       ["Account risk", `${plan.accountRiskPercent.toFixed(1)}%`],
       ["Potential gain", currencyFormatter.format(plan.potentialGain)],
       ["Risk / reward", `${plan.ratio.toFixed(1)} : 1`],
-      ["Trade direction", action],
-      ["Confidence", `${getValue("confidence")} / 5`]
+      ["Trade direction", action]
     ];
   } else {
     items = [
       ["Trend", getValue("trend")],
-      ["Patterns", patterns],
+      ["Primary pattern", patterns],
       ["Decision", action],
-      ["Confidence", `${getValue("confidence")} / 5`],
       ["Reason", getValue("reason")]
     ];
   }
@@ -2202,13 +2402,13 @@ async function beginCommitmentMoment() {
     : "Patience is a position. Trust the decision you planned.";
   decisionLab.classList.add("is-precommit");
   chartWrap.classList.add("is-plan-locked");
-  accountAllocation.classList.remove("is-committed");
+  accountAllocation?.classList.remove("is-committed");
   setStep("commit");
   chartStatus.textContent = "Trade plan staged for commitment";
   drawTradeChart();
   if (isTrade) playCapitalTransferSound();
-  void accountAllocation.offsetWidth;
-  accountAllocation.classList.add("is-committed");
+  if (accountAllocation) void accountAllocation.offsetWidth;
+  accountAllocation?.classList.add("is-committed");
 
   await wait(reducedMotionQuery.matches ? 240 : 680);
   if (sequenceId !== commitmentSequenceId) return;
@@ -2228,7 +2428,7 @@ function reviewCommittedPlan() {
   capitalCommitted = false;
   decisionLab.classList.remove("is-precommit");
   chartWrap.classList.remove("is-plan-locked");
-  accountAllocation.classList.remove("is-committed");
+  accountAllocation?.classList.remove("is-committed");
   commitmentActions.classList.remove("is-ready");
   commitmentActions.hidden = true;
   commitStep.classList.remove("is-ritualizing", "is-readable");
@@ -2242,19 +2442,30 @@ function reviewCommittedPlan() {
 
 async function confirmCommittedReplay() {
   commitmentSequenceId += 1;
+  if (replayRunning) return;
   stopHeartbeat();
   playCapitalCommitmentSound();
   lockedDecision = snapshotDecision();
+  stagePracticeOrder();
   stopPlanningTimer();
   timerDisplay.textContent = "Locked";
   timerPause.disabled = true;
   timerModeControl.disabled = true;
-  timerMessage.textContent = "Capital committed. Trade fields are locked.";
+  timerMessage.textContent = "Decision submitted. The market is moving forward.";
   decisionForm.querySelectorAll("input, textarea, button").forEach((control) => { control.disabled = true; });
   decisionLab.classList.remove("is-precommit");
-  transitionToReplayMusic();
-  await wait(reducedMotionQuery.matches ? 20 : 180);
-  runReplay();
+  fadeFocusMusic(0.08, 1.1);
+  await runReplay();
+}
+
+async function submitOrderDecision() {
+  if (replayRunning || !validatePlan()) return;
+  const submitOrder = document.querySelector("#submitOrder");
+  capitalCommitted = true;
+  buildSummary();
+  submitOrder.disabled = true;
+  if (["Buy", "Sell"].includes(getValue("action"))) playCapitalTransferSound();
+  await confirmCommittedReplay();
 }
 
 function gradeForScore(score) {
@@ -2265,7 +2476,6 @@ function calculateScores() {
   const trend = getValue("trend");
   const patterns = getPatterns();
   const action = getValue("action");
-  const confidence = Number(getValue("confidence"));
   const observation = (getValue("observation") || "").toLowerCase();
   const trendCorrect = trend === activeScenario.correctTrend;
   const trendRecognition = trendCorrect
@@ -2309,11 +2519,7 @@ function calculateScores() {
   }
 
   const actionScore = preferredAction ? 96 : acceptableAction ? 84 : 36;
-  const completeRead = trendCorrect && patternCorrect;
-  const confidenceScore = completeRead
-    ? ({ 1: 62, 2: 76, 3: 88, 4: 96, 5: 88 }[confidence] ?? 50)
-    : ({ 1: 86, 2: 78, 3: 62, 4: 46, 5: 32 }[confidence] ?? 50);
-  const disciplineScore = Math.round((actionScore * 0.72) + (confidenceScore * 0.28));
+  const disciplineScore = actionScore;
   const overall = Math.round(marketVisionScore * 0.5 + riskScore * 0.25 + disciplineScore * 0.25);
   const grade = gradeForScore(overall);
   return {
@@ -2357,7 +2563,7 @@ function updateResultCopy(scores) {
     body.textContent = "The trade outcome was favorable, but the analysis did not support it. A lucky outcome is not a repeatable edge.";
   } else if (!profitable && !noTrade && (scores.preferredAction || scores.acceptableAction) && scores.overall >= 83) {
     headline.textContent = "Excellent process. Unlucky outcome.";
-    body.textContent = "Your read and risk plan were disciplined. One loss would not make that process wrong.";
+    body.textContent = "Your read and risk plan were disciplined. One loss would not invalidate that process.";
   } else if (scores.preferredAction) {
     headline.textContent = "The decision matched the evidence.";
     body.textContent = activeScenario.coach.success;
@@ -2490,188 +2696,49 @@ function animateXrayTo(target, duration, frequency) {
   });
 }
 
-function clearRevealAutoplay() {
-  window.clearTimeout(revealAutoplayTimer);
-  revealAutoplayTimer = null;
-}
-
-function revealSelectionIsActive() {
-  const selection = window.getSelection?.();
-  return Boolean(selection && !selection.isCollapsed && revealText.contains(selection.anchorNode));
-}
-
-function revealReadingTime() {
-  const text = `${revealHeading.textContent} ${revealBody.textContent}`.trim();
-  const wordCount = text ? text.split(/\s+/).length : 0;
-  return Math.max(4000, Math.ceil((wordCount / 180) * 60000));
-}
-
-function revealVoiceIsPlaying() {
-  if (revealVoiceMode === "local" || revealVoiceMode === "backend") {
-    return Boolean(activeCoachAudio && !activeCoachAudio.ended && !activeCoachAudio.paused);
-  }
-  return revealVoiceMode === "browser-dev" && "speechSynthesis" in window && window.speechSynthesis.speaking;
-}
-
-async function waitForRevealVoice() {
-  while (revealCompletion && revealVoiceIsPlaying()) await wait(100);
-}
-
-function scheduleRevealAutoplay() {
-  clearRevealAutoplay();
-  if (!revealCompletion || !revealAutoplay.checked || revealPaused || revealIsSummary || revealTransitioning || document.hidden) return;
-  revealAutoplayTimer = window.setTimeout(() => {
-    if (revealInteractionHold || revealSelectionIsActive() || document.activeElement === revealText) {
-      scheduleRevealAutoplay();
-      return;
-    }
-    advanceRevealWalkthrough();
-  }, revealReadingTime());
-}
-
-function updateRevealControls() {
-  revealBack.disabled = revealTransitioning || revealStageIndex < 0;
-  revealPause.disabled = false;
-  revealPause.textContent = revealPaused ? "Resume" : "Pause";
-  revealPause.setAttribute("aria-pressed", String(revealPaused));
-  revealReplayVoice.disabled = revealTransitioning || !coachVoiceEnabled;
-  revealRestart.disabled = revealTransitioning || (revealStageIndex < 0 && !revealIsSummary);
-  revealSkip.hidden = revealIsSummary;
-  revealSkip.disabled = revealTransitioning;
-  revealContinue.disabled = revealTransitioning || revealPaused;
-  revealContinue.textContent = revealIsSummary ? "Continue to Results" : "Continue";
-}
-
-async function speakRevealText() {
-  stopCoachAudio();
-  const spokenText = revealIsSummary
-    ? `${revealHeading.textContent}. ${revealBody.textContent} ${(activeScenario.annotation.summary || []).join(" ")}`
-    : revealBody.textContent;
-  const response = await speakCoachLine(spokenText, "discovery");
-  revealVoiceMode = response.mode;
-}
-
-async function renderRevealStage(index, { animate = true } = {}) {
-  if (!revealCompletion) return;
-  clearRevealAutoplay();
-  revealTransitioning = true;
-  updateRevealControls();
-  stopCoachAudio();
-  chartTeachingIntensity = 0;
-  chartTeachingFocus = null;
-  drawTradeChart();
-
-  const stages = activeScenario.annotation.stages;
-  const summary = index >= stages.length;
-  const stage = index >= 0 && !summary ? stages[index] : null;
-  const target = summary ? 1 : stage?.target || 0;
-  if (!animate || reducedMotionQuery.matches) {
-    xrayProgress = target;
-    xrayOpacity = 1;
-    if (stage) playTone(stage.frequency, 0, 0.12, 0.012, "sine");
-    drawTradeChart();
-  } else {
-    await animateXrayTo(target, stage?.duration || 420, stage?.frequency || 392);
-  }
-  if (!revealCompletion) return;
-
-  revealText.classList.add("is-changing");
-  await wait(reducedMotionQuery.matches ? 1 : 150);
-  if (!revealCompletion) return;
-  revealStageIndex = summary ? stages.length : index;
-  revealIsSummary = summary;
-
-  if (summary) {
-    chartStatus.textContent = "Explanation complete";
-    revealProgress.textContent = `${stages.length} of ${stages.length} / Summary`;
-    revealHeading.textContent = "Why this setup mattered";
-    revealBody.textContent = activeScenario.lesson;
-    revealSummary.replaceChildren(...(activeScenario.annotation.summary || []).map((item) => {
-      const listItem = document.createElement("li");
-      listItem.textContent = item;
-      return listItem;
-    }));
-    revealSummary.hidden = false;
-  } else if (stage) {
-    chartStatus.textContent = stage.status;
-    revealProgress.textContent = `Step ${index + 1} of ${stages.length}`;
-    revealHeading.textContent = stage.status;
-    revealBody.textContent = stage.message;
-    revealSummary.hidden = true;
-    chartTeachingFocus = stage.focus;
-    chartTeachingIntensity = 0.9;
-    drawTradeChart();
-  } else {
-    chartStatus.textContent = "Pattern X-Ray ready";
-    revealProgress.textContent = `Ready / ${stages.length} teaching points`;
-    revealHeading.textContent = "Read the evidence";
-    revealBody.textContent = activeScenario.annotation.recognitionPrompt;
-    revealSummary.hidden = true;
-  }
-
-  revealText.classList.remove("is-changing");
-  if (!revealPaused) await speakRevealText();
-  revealTransitioning = false;
-  updateRevealControls();
-  revealContinue.focus({ preventScroll: true });
-  scheduleRevealAutoplay();
-}
-
-async function advanceRevealWalkthrough() {
-  if (!revealCompletion || revealTransitioning || revealPaused) return;
-  revealTransitioning = true;
-  updateRevealControls();
-  await waitForRevealVoice();
-  if (!revealCompletion || revealPaused) {
-    revealTransitioning = false;
-    updateRevealControls();
-    return;
-  }
-  if (revealIsSummary) {
-    finishRevealWalkthrough(true);
-    return;
-  }
-  revealTransitioning = false;
-  await renderRevealStage(revealStageIndex + 1);
-}
-
-function finishRevealWalkthrough(completed) {
-  clearRevealAutoplay();
-  stopCoachAudio();
-  revealWalkthrough.classList.remove("is-visible");
-  window.setTimeout(() => {
-    if (!revealWalkthrough.classList.contains("is-visible")) revealWalkthrough.hidden = true;
-  }, reducedMotionQuery.matches ? 1 : 260);
-  chartTeachingFocus = null;
-  chartTeachingIntensity = 0;
-  drawTradeChart();
-  const completion = revealCompletion;
-  revealCompletion = null;
-  revealTransitioning = false;
-  completion?.resolve(completed);
-}
-
-function cancelRevealWalkthrough() {
-  if (!revealCompletion) return;
-  finishRevealWalkthrough(false);
-}
-
 async function animatePatternXray() {
-  cancelRevealWalkthrough();
+  const reviewToken = ++automatedReviewToken;
   xrayProgress = 0;
   xrayOpacity = 1;
-  revealStageIndex = -1;
-  revealIsSummary = false;
-  revealPaused = false;
-  revealTransitioning = false;
-  revealInteractionHold = false;
-  revealAutoplay.checked = false;
   revealWalkthrough.hidden = false;
   void revealWalkthrough.offsetWidth;
   revealWalkthrough.classList.add("is-visible");
-  const completionPromise = new Promise((resolve) => { revealCompletion = { resolve }; });
-  await renderRevealStage(-1, { animate: false });
-  return completionPromise;
+  const source = activeScenario.annotation.stages;
+  const stages = [
+    source[0], source[1], source[4], source[3], source[2], source[6], source[5],
+    { status: "Defining invalidation", focus: "invalidation", frequency: 440, message: `The stop at ${formatPrice(activeScenario.plan.stop)} marked where the idea would be wrong.` },
+    { status: "Reading the outcome", focus: "outcome", frequency: 523.25, message: activeScenario.lesson }
+  ].filter(Boolean);
+
+  for (let index = 0; index < stages.length; index += 1) {
+    if (reviewToken !== automatedReviewToken || guidedReviewPhase !== "guidedTeaching") return false;
+    const stage = stages[index];
+    stopCoachAudio();
+    chartTeachingIntensity = 0;
+    chartTeachingFocus = null;
+    drawTradeChart();
+    await animateXrayTo((index + 1) / stages.length, reducedMotionQuery.matches ? 1 : 420, stage.frequency || 392);
+    if (reviewToken !== automatedReviewToken) return false;
+    revealText.classList.add("is-changing");
+    await wait(reducedMotionQuery.matches ? 1 : 120);
+    revealBody.textContent = stage.message;
+    chartStatus.textContent = `${index + 1} of ${stages.length} / ${stage.status}`;
+    chartTeachingFocus = stage.focus;
+    chartTeachingIntensity = 0.92;
+    revealText.classList.remove("is-changing");
+    drawTradeChart();
+    void speakCoachLine(stage.message, "discovery");
+    await wait(reducedMotionQuery.matches ? 520 : Math.max(1800, Math.min(2600, stage.message.split(/\s+/).length * 105)));
+  }
+
+  stopCoachAudio();
+  chartTeachingFocus = null;
+  chartTeachingIntensity = 0;
+  revealWalkthrough.classList.remove("is-visible");
+  await wait(reducedMotionQuery.matches ? 1 : 240);
+  revealWalkthrough.hidden = true;
+  drawTradeChart();
+  return reviewToken === automatedReviewToken;
 }
 
 function playDiscoveryChime() {
@@ -2808,7 +2875,7 @@ function configureFallingKnifeCoach() {
   document.querySelector("#coachHeadline").textContent = profile.opening;
   document.querySelector("#coachBody").textContent = "The chart was still producing lower highs and lower lows. No confirmed reversal structure had formed, and volume had not shown a meaningful change in control.";
   feedbackWellText.textContent = "You made a clear decision and defined the capital at risk. That gives the coach a specific thesis to review instead of judging the outcome alone.";
-  feedbackWatchText.textContent = "Buying during a downtrend is not always wrong. Here, the issue was entering without confirmation or a clearly defined reversal thesis.";
+  feedbackWatchText.textContent = "A reversal thesis needs confirmation. Here, the chart had not yet shown a change in control.";
   feedbackLessonText.textContent = "A higher low, support reclaim, or confirmed breakout with supportive volume may provide stronger evidence that control is changing.";
   lessonEndingLine.textContent = "Let the market show its hand before you reach for the knife.";
   return profile;
@@ -2960,6 +3027,8 @@ function prepareLessonSequence() {
   coachVoiceCaption.hidden = true;
   patternDiscoveryLabel.classList.remove("is-visible");
   patternDiscoveryLabel.hidden = true;
+  tradeDebriefSummary.hidden = true;
+  resultStep.setAttribute("aria-labelledby", "result-title");
 }
 
 async function revealLessonElement(element, sequenceId, delay = 0) {
@@ -2969,6 +3038,158 @@ async function revealLessonElement(element, sequenceId, delay = 0) {
   void element.offsetWidth;
   element.classList.add("is-visible");
   return true;
+}
+
+function setGuidedReviewPhase(phase) {
+  guidedReviewPhase = phase;
+  decisionLab.dataset.reviewPhase = phase;
+  labWorkspace.dataset.reviewPhase = phase;
+  chartWrap.dataset.reviewPhase = phase;
+}
+
+function waitForFrames(count = 1) {
+  return new Promise((resolve) => {
+    let remaining = count;
+    function frame() {
+      remaining -= 1;
+      if (remaining <= 0) resolve();
+      else window.requestAnimationFrame(frame);
+    }
+    window.requestAnimationFrame(frame);
+  });
+}
+
+function waitForChartLayoutSettled(sequenceId, { timeout = 1500, quietFrames = 5 } = {}) {
+  return new Promise((resolve) => {
+    let resolved = false;
+    let stableFrames = 0;
+    let lastWidth = -1;
+    let lastHeight = -1;
+    let frameId = null;
+    const cleanup = () => {
+      if (resolved) return;
+      resolved = true;
+      if (frameId) window.cancelAnimationFrame(frameId);
+      if (chartResizeObserver) {
+        chartResizeObserver.disconnect();
+        chartResizeObserver = null;
+      }
+      drawTradeChart();
+      resolve(sequenceId === guidedReviewSequenceId);
+    };
+    const check = () => {
+      const rect = tradeChart.getBoundingClientRect();
+      const width = Math.round(rect.width);
+      const height = Math.round(rect.height);
+      stableFrames = width === lastWidth && height === lastHeight ? stableFrames + 1 : 0;
+      lastWidth = width;
+      lastHeight = height;
+      drawTradeChart();
+      if (sequenceId !== guidedReviewSequenceId || stableFrames >= quietFrames) cleanup();
+      else frameId = window.requestAnimationFrame(check);
+    };
+    if (chartResizeObserver) chartResizeObserver.disconnect();
+    chartResizeObserver = new ResizeObserver(() => {
+      stableFrames = 0;
+    });
+    chartResizeObserver.observe(chartWrap);
+    chartResizeObserver.observe(tradeChart);
+    frameId = window.requestAnimationFrame(check);
+    window.setTimeout(cleanup, timeout);
+  });
+}
+
+async function prepareGuidedReviewTransition(sequenceId) {
+  setGuidedReviewPhase("decisionCommitted");
+  await wait(reducedMotionQuery.matches ? 160 : 220);
+  if (sequenceId !== guidedReviewSequenceId) return false;
+
+  setGuidedReviewPhase("clearingInterface");
+  await wait(reducedMotionQuery.matches ? 120 : 520);
+  if (sequenceId !== guidedReviewSequenceId) return false;
+
+  setGuidedReviewPhase("expandingChart");
+  decisionForm.hidden = true;
+  resultStep.hidden = true;
+  labWorkspace.classList.add("is-pattern-reveal");
+  decisionLab.classList.add("is-reflecting");
+  currentStep = "replay";
+  stepLabel.textContent = "Step 4 of 5";
+  stepName.textContent = "Guided Review";
+  progressFill.style.width = "100%";
+  chartScrollProgress = 0;
+  revealedFuture = 0;
+  chartStatus.textContent = "Guided Review preparing";
+  drawTradeChart();
+
+  const settled = await waitForChartLayoutSettled(sequenceId, { timeout: reducedMotionQuery.matches ? 320 : 1600, quietFrames: reducedMotionQuery.matches ? 2 : 5 });
+  if (!settled || sequenceId !== guidedReviewSequenceId) return false;
+
+  setGuidedReviewPhase("chartSettled");
+  await waitForFrames(2);
+  setGuidedReviewPhase("orientationPause");
+  await wait(reducedMotionQuery.matches ? 520 : 680);
+  if (sequenceId !== guidedReviewSequenceId) return false;
+
+  transitionToReplayMusic();
+  return true;
+}
+
+function showCompletedPoster(sequenceId) {
+  if (sequenceId !== postReplaySequenceId) return;
+  setGuidedReviewPhase("completedPoster");
+  chartTeachingFocus = null;
+  chartTeachingIntensity = 0;
+  xrayProgress = 1;
+  xrayOpacity = 1;
+  patternDiscoveryLabel.classList.remove("is-visible");
+  patternDiscoveryLabel.hidden = true;
+  revealWalkthrough.classList.remove("is-visible");
+  revealWalkthrough.hidden = true;
+  chartStatus.textContent = "Guided Review complete";
+  drawTradeChart();
+  reviewPosterNext.hidden = false;
+  void reviewPosterNext.offsetWidth;
+  reviewPosterNext.classList.add("is-visible");
+}
+
+function renderTradeDebrief(scores) {
+  const quality = scores.overall >= 84 ? "Excellent" : scores.overall >= 74 ? "Good" : "Developing";
+  debriefDecisionQuality.textContent = quality;
+  debriefTakeaway.textContent = activeScenario.lesson;
+  const completedScores = [...sessionResults.values()];
+  const hasHistory = completedScores.length >= 2;
+  growthMetrics.hidden = !hasHistory;
+  growthFallback.hidden = hasHistory;
+  if (hasHistory) {
+    const average = (key) => Math.round(completedScores.reduce((total, result) => total + result[key], 0) / completedScores.length);
+    growthTrend.textContent = `${average("trendRecognition")}%`;
+    growthPattern.textContent = `${average("patternInterpretation")}%`;
+  }
+}
+
+async function openTradeDebriefFromPoster() {
+  if (guidedReviewPhase !== "completedPoster") return;
+  reviewPosterNext.classList.remove("is-visible");
+  await wait(reducedMotionQuery.matches ? 20 : 260);
+  reviewPosterNext.hidden = true;
+  setGuidedReviewPhase("tradeDebrief");
+  transitionToLessonMusic();
+  currentStep = "results";
+  stepLabel.textContent = "Step 5 of 5";
+  stepName.textContent = "Trade Debrief";
+  progressFill.style.width = "100%";
+  timerMessage.textContent = "";
+  decisionLab.classList.remove("is-reflecting");
+  labWorkspace.classList.remove("is-pattern-reveal");
+  labWorkspace.classList.add("is-debrief");
+  decisionPanel.classList.remove("is-coach-arrival");
+  decisionPanel.classList.add("is-debrief");
+  renderTradeDebrief(latestScores);
+  resultStep.hidden = false;
+  resultStep.setAttribute("aria-labelledby", "trade-debrief-title");
+  tradeDebriefSummary.hidden = false;
+  chartStatus.textContent = "Trade Debrief";
 }
 
 function animateSkillProgressRow(row) {
@@ -2993,23 +3214,22 @@ function animateSkillProgressRow(row) {
 
 async function runPostReplaySequence(scores) {
   const sequenceId = ++postReplaySequenceId;
-  const shortBeat = reducedMotionQuery.matches ? 350 : 650;
   prepareLessonSequence();
-  labWorkspace.classList.add("is-pattern-reveal");
-  decisionLab.classList.add("is-reflecting");
-  fadeFocusMusic(0.18, 0.9);
+  setGuidedReviewPhase("outcomeSettled");
+  fadeFocusMusic(0.2, 0.9);
   chartStatus.textContent = "Replay complete";
-  await wait(reducedMotionQuery.matches ? 750 : 1100);
+  await wait(reducedMotionQuery.matches ? 380 : 520);
   if (sequenceId !== postReplaySequenceId) return;
 
-  let profile;
+  setGuidedReviewPhase("guidedTeaching");
+  transitionToLessonMusic();
   if (fallingKnifeMistake) {
     chartStatus.textContent = "Reversal confirmation missing";
     tradeChart.setAttribute("aria-label", "Completed replay with a clearly established downtrend and no confirmed reversal structure.");
     if (!await playFallingKnifeAnimation(sequenceId)) return;
-    profile = configureFallingKnifeCoach();
+    configureFallingKnifeCoach();
   } else {
-    profile = configureCoachLesson(scores);
+    configureCoachLesson(scores);
   }
 
   chartStatus.textContent = "Pattern X-Ray active";
@@ -3027,52 +3247,7 @@ async function runPostReplaySequence(scores) {
   await wait(reducedMotionQuery.matches ? 650 : 900);
   if (sequenceId !== postReplaySequenceId) return;
 
-  currentStep = "results";
-  stepLabel.textContent = "Step 5 of 5";
-  stepName.textContent = "Decision debrief";
-  progressFill.style.width = "100%";
-  resultStep.hidden = false;
-  decisionPanel.classList.add("is-coach-arrival");
-  decisionPanel.scrollTop = 0;
-  if (!await revealLessonElement(coachCard, sequenceId)) return;
-  await speakCoachLine(document.querySelector("#coachHeadline").textContent, profile.mood);
-  await wait(reducedMotionQuery.matches ? 450 : 820);
-  if (sequenceId !== postReplaySequenceId) return;
-
-  transitionToLessonMusic();
-  fadeChartAnnotations(900);
-  decisionLab.classList.remove("is-reflecting");
-  labWorkspace.classList.remove("is-pattern-reveal");
-  labWorkspace.classList.add("is-debrief");
-  decisionPanel.classList.remove("is-coach-arrival");
-  decisionPanel.classList.add("is-debrief");
-  patternDiscoveryLabel.classList.remove("is-visible");
-  await wait(reducedMotionQuery.matches ? 250 : 720);
-  patternDiscoveryLabel.hidden = true;
-  if (sequenceId !== postReplaySequenceId) return;
-
-  if (!await revealLessonElement(lessonStats, sequenceId)) return;
-  if (!await revealLessonElement(coachFeedback, sequenceId, shortBeat)) return;
-  if (!await revealLessonElement(feedbackWell, sequenceId, shortBeat)) return;
-  playTone(620, 0, 0.12, 0.022, "sine");
-  if (!await revealLessonElement(feedbackWatch, sequenceId, shortBeat)) return;
-  playTone(680, 0, 0.12, 0.02, "sine");
-  if (!await revealLessonElement(feedbackLesson, sequenceId, shortBeat)) return;
-  playTone(740, 0, 0.14, 0.022, "sine");
-
-  if (!await revealLessonElement(skillProgressPanel, sequenceId, shortBeat)) return;
-  for (const [index, row] of [...document.querySelectorAll(".skill-progress-row")].entries()) {
-    await wait(reducedMotionQuery.matches ? 80 : 220);
-    if (sequenceId !== postReplaySequenceId) return;
-    animateSkillProgressRow(row);
-    playTone(620 + index * 55, 0, 0.1, 0.016, "sine");
-  }
-  if (!await revealLessonElement(lessonSecondary, sequenceId, reducedMotionQuery.matches ? 180 : 360)) return;
-  if (!await revealLessonElement(lessonEnding, sequenceId, reducedMotionQuery.matches ? 300 : 620)) return;
-  await wait(reducedMotionQuery.matches ? 200 : 420);
-  if (sequenceId !== postReplaySequenceId) return;
-  nextScenarioButton.classList.add("is-ready");
-  speakCoachLine(lessonEndingLine.textContent, scores.overall >= 84 ? "encouraging" : "serious");
+  showCompletedPoster(sequenceId);
 }
 
 function showReplayMessage(message) {
@@ -3109,22 +3284,31 @@ function animateChartScroll(duration = 620) {
   });
 }
 
-async function runReplay() {
+async function runReplay({ transitionPrepared = false } = {}) {
   if (replayRunning) return;
   replayRunning = true;
-  setStep("replay");
-  decisionForm.hidden = true;
+  const sequenceId = ++guidedReviewSequenceId;
+  if (!transitionPrepared) {
+    const prepared = await prepareGuidedReviewTransition(sequenceId);
+    if (!prepared) {
+      replayRunning = false;
+      return;
+    }
+  }
+
+  setGuidedReviewPhase("revealingOutcome");
   futureMask.classList.add("is-open");
   crosshair.active = false;
   crosshair.dragging = false;
   chartWrap.classList.remove("is-inspecting");
   chartStatus.textContent = "Replay in progress";
-  showReplayMessage("Decision locked. Playing history...");
-  await wait(reducedMotionQuery.matches ? 250 : 700);
+  showReplayMessage("Playing history...");
+  await wait(reducedMotionQuery.matches ? 120 : 260);
   hideReplayMessage();
 
   if (reducedMotionQuery.matches) {
     revealedFuture = futureCloses.length;
+    updatePracticePositionDuringReplay(futureCloses[futureCloses.length - 1]);
     chartScrollProgress = 0;
     drawTradeChart();
     showReplayMessage(activeScenario.replayComplete);
@@ -3133,12 +3317,17 @@ async function runReplay() {
   } else {
     for (let index = 1; index <= futureCloses.length; index += 1) {
       revealedFuture = index;
+      updatePracticePositionDuringReplay(futureCloses[index - 1]);
       chartScrollProgress = 1;
       playTick(index);
       const replayCue = activeScenario.replayMessages.find((message) => message.at === index);
       if (replayCue) showReplayMessage(replayCue.text);
-      await animateChartScroll(620);
+      await animateChartScroll(560);
       if (replayCue) hideReplayMessage();
+      if (sequenceId !== guidedReviewSequenceId) {
+        replayRunning = false;
+        return;
+      }
     }
   }
 
@@ -3175,8 +3364,13 @@ async function initializeAudioFromGesture() {
   const context = getAudioContext();
   if (!context) return;
   try {
-    if (context.state === "suspended") await context.resume();
-    audioStarted = true;
+    if (context.state === "suspended") {
+      await Promise.race([
+        context.resume(),
+        new Promise((resolve) => window.setTimeout(resolve, 700))
+      ]);
+    }
+    audioStarted = context.state === "running";
     applyAudioState();
   } catch (_) {
     audioStarted = false;
@@ -3362,9 +3556,9 @@ function playDecisionChoiceSound(name, value, checked = true) {
     return;
   }
 
-  if (name === "confidence") {
-    const level = Math.max(1, Math.min(5, Number(value) || 1));
-    playTone(300 + level * 55, 0, 0.2, 0.045, "sine");
+  if (name === "action") {
+    const frequency = value === "Buy" ? 440 : value === "Sell" ? 349.23 : 392;
+    playTone(frequency, 0, 0.16, 0.032, "triangle");
   }
 }
 
@@ -3705,14 +3899,14 @@ function scheduleMusicPulse() {
         : focusChords;
 
   while (nextMusicBeat < lookAhead) {
-    const replayIntensity = 0.22 + (revealedFuture / Math.max(1, futureCloses.length)) * 0.78;
+    const replayIntensity = 0.14 + (revealedFuture / Math.max(1, futureCloses.length)) * 0.28;
     const intensity = debriefMusicMode ? 0.16 : replayMusicActive ? replayIntensity : getMusicIntensity();
     const tempo = debriefMusicMode === "celebrate"
       ? 102
       : debriefMusicMode === "reflect"
         ? 58
         : replayMusicActive
-          ? 76 + intensity * 32
+          ? 62 + intensity * 18
           : timerState.mode === "relaxed" ? 66 : 72 + intensity * (timerState.mode === "challenge" ? 20 : 12);
     const beatLength = 60 / tempo;
     const delay = Math.max(0, nextMusicBeat - context.currentTime);
@@ -3723,32 +3917,28 @@ function scheduleMusicPulse() {
       : debriefMusicMode === "celebrate"
         ? 0.036
         : replayMusicActive
-          ? 0.036 + intensity * 0.012
+          ? 0.018 + intensity * 0.006
           : 0.034 + intensity * 0.009;
 
     playAdventurePluck(motif[phraseBeat], delay, Math.min(0.62, beatLength * 0.82), pluckVolume);
     if (phraseBeat % 4 === 0) {
       const celebrating = debriefMusicMode === "celebrate";
-      const padVolume = celebrating ? 0.013 : debriefMusicMode ? 0.016 + intensity * 0.003 : 0.018 + intensity * 0.005;
-      const bassVolume = celebrating ? 0.022 : debriefMusicMode ? 0.032 : replayMusicActive ? 0.052 : 0.045;
+      const padVolume = celebrating ? 0.013 : debriefMusicMode ? 0.016 + intensity * 0.003 : replayMusicActive ? 0.011 + intensity * 0.002 : 0.018 + intensity * 0.005;
+      const bassVolume = celebrating ? 0.022 : debriefMusicMode ? 0.032 : replayMusicActive ? 0.024 : 0.045;
       const bassFrequency = celebrating ? chords[chordIndex][0] : chords[chordIndex][0] / 2;
       playAdventurePad(chords[chordIndex], delay, beatLength * 3.85, padVolume);
       playTone(bassFrequency, delay, Math.min(0.42, beatLength * 0.62), bassVolume, "triangle", "music");
     }
-    if ((debriefMusicMode === "celebrate" || replayMusicActive || (!debriefMusicMode && intensity > 0.38)) && phraseBeat % 2 === 1) {
+    if ((debriefMusicMode === "celebrate" || (!replayMusicActive && !debriefMusicMode && intensity > 0.38)) && phraseBeat % 2 === 1) {
       playAdventurePluck(motif[phraseBeat] * 2, delay + beatLength * 0.5, 0.2, 0.012 + intensity * 0.004);
     }
     if (debriefMusicMode === "celebrate" && phraseBeat % 4 === 2) {
       playTone(chords[chordIndex][0], delay, 0.13, 0.024, "triangle", "music");
     } else if (replayMusicActive && phraseBeat % 4 === 2) {
-      playTone(58 + intensity * 22, delay, 0.11, 0.016 + intensity * 0.006, "sawtooth", "music");
+      playTone(58 + intensity * 12, delay, 0.11, 0.007 + intensity * 0.003, "triangle", "music");
     } else if (!debriefMusicMode && intensity > 0.72 && phraseBeat % 4 === 2) {
       playTone(880, delay, 0.055, 0.009, "sine", "music");
     }
-    if (replayMusicActive && intensity > 0.54 && phraseBeat % 4 === 0) {
-      playTone(520 + intensity * 280, delay + beatLength * 0.72, 0.075, 0.008 + intensity * 0.005, "sine", "music");
-    }
-
     musicBeatIndex += 1;
     nextMusicBeat += beatLength;
   }
@@ -3798,8 +3988,8 @@ function transitionToLessonMusic() {
   nextMusicBeat = context.currentTime + 0.3;
   musicGain.gain.cancelScheduledValues(context.currentTime);
   musicGain.gain.setValueAtTime(Math.max(0.0001, musicGain.gain.value), context.currentTime);
-  musicGain.gain.linearRampToValueAtTime(0.72, context.currentTime + 1.6);
-  playAdventurePad([146.83, 174.61, 220], 0.18, 2.2, 0.012);
+  musicGain.gain.linearRampToValueAtTime(0.58, context.currentTime + 1.7);
+  playAdventurePad([146.83, 174.61, 220], 0.22, 2.4, 0.01);
 }
 
 function transitionToReplayMusic() {
@@ -3810,11 +4000,11 @@ function transitionToReplayMusic() {
   if (!context) return;
   if (!musicRunning) startFocusMusic();
   musicBeatIndex = 0;
-  nextMusicBeat = context.currentTime + 0.16;
+  nextMusicBeat = context.currentTime + 0.38;
   musicGain.gain.cancelScheduledValues(context.currentTime);
   musicGain.gain.setValueAtTime(Math.max(0.0001, musicGain.gain.value), context.currentTime);
-  musicGain.gain.linearRampToValueAtTime(1.96, context.currentTime + 0.8);
-  playAdventurePad([110, 164.81, 220], 0.02, 1.35, 0.024);
+  musicGain.gain.linearRampToValueAtTime(0.62, context.currentTime + 1.45);
+  playAdventurePad([110, 164.81, 220], 0.22, 1.8, 0.012);
 }
 
 function transitionToDebriefMusic(successfulOutcome) {
@@ -4281,8 +4471,17 @@ function exitLab() {
 
 function resetSession({ resetCapital = false } = {}) {
   postReplaySequenceId += 1;
+  guidedReviewSequenceId += 1;
   commitmentSequenceId += 1;
-  cancelRevealWalkthrough();
+  automatedReviewToken += 1;
+  if (chartResizeObserver) {
+    chartResizeObserver.disconnect();
+    chartResizeObserver = null;
+  }
+  window.clearTimeout(analysisAdvanceTimer);
+  window.clearTimeout(actionAdvanceTimer);
+  analysisAdvanceTimer = null;
+  actionAdvanceTimer = null;
   stopHeartbeat();
   window.cancelAnimationFrame(capitalAnimationFrame);
   window.clearTimeout(capitalResultTimer);
@@ -4292,6 +4491,10 @@ function resetSession({ resetCapital = false } = {}) {
   coachPreviewCaption.hidden = true;
   replayHero.classList.remove("is-visible");
   replayHero.hidden = true;
+  reviewPosterNext.classList.remove("is-visible");
+  reviewPosterNext.hidden = true;
+  tradeDebriefSummary.hidden = true;
+  setGuidedReviewPhase("idle");
   decisionLab.classList.remove("is-reflecting");
   decisionLab.classList.remove("is-precommit");
   labWorkspace.classList.remove("is-debrief", "is-pattern-reveal", "is-study-mode");
@@ -4300,7 +4503,17 @@ function resetSession({ resetCapital = false } = {}) {
   prepareLessonSequence();
   capitalResult.classList.remove("is-visible", "is-gain", "is-loss", "is-neutral");
   capitalResult.hidden = true;
-  if (resetCapital) practiceCapital = STARTING_PRACTICE_CAPITAL;
+  if (resetCapital) {
+    practiceCapital = STARTING_PRACTICE_CAPITAL;
+    practiceAccount = {
+      cash: STARTING_PRACTICE_CAPITAL,
+      positionUnits: 0,
+      positionEntry: 0,
+      positionMark: 0,
+      unrealizedPL: 0,
+      realizedPL: 0
+    };
+  }
   practiceOutcomeApplied = false;
   lockedDecision = null;
   capitalCommitted = false;
@@ -4339,15 +4552,15 @@ function resetSession({ resetCapital = false } = {}) {
   chartWrap.classList.remove("is-inspecting");
   latestScores = null;
   decisionForm.reset();
+  decisionForm.querySelectorAll(".form-step.is-confirming").forEach((panel) => panel.classList.remove("is-confirming"));
   decisionForm.querySelectorAll("input, textarea, button").forEach((control) => { control.disabled = false; });
-  document.querySelector("#positionAmount").value = "3200";
+  document.querySelector("#positionAmount").value = (practiceAccount.cash * 0.32).toFixed(2);
   document.querySelector("#positionPercent").value = "32";
   document.querySelector('input[name="risk"]').value = "0.9";
   applyScenarioPresentation();
   commitmentActions.hidden = true;
   commitmentActions.classList.remove("is-ready");
   commitmentStatus.classList.remove("is-confirmed");
-  accountAllocation.classList.remove("is-committed");
   commitStep.classList.remove("is-ritualizing", "is-readable");
   timerModeControl.disabled = false;
   document.querySelectorAll(".form-error").forEach((element) => { element.textContent = ""; });
@@ -4368,6 +4581,8 @@ function resetSession({ resetCapital = false } = {}) {
   hideReplayMessage();
   setStep("observe");
   updatePlanMode();
+  updateOrderType();
+  renderPracticeAccountMetrics();
   startPlanningTimer();
   startFocusMusic();
   drawTradeChart();
@@ -4379,10 +4594,11 @@ document.querySelector("#returnHome").addEventListener("click", exitLab);
 
 decisionForm.addEventListener("submit", (event) => event.preventDefault());
 decisionForm.addEventListener("change", (event) => {
-  if (!event.target.matches('input[name="trend"], input[name="patterns"], input[name="confidence"]')) return;
+  if (!event.target.matches('input[name="trend"], input[name="patterns"]')) return;
   playDecisionChoiceSound(event.target.name, event.target.value, event.target.checked);
   if (event.target.name === "trend") animateTrendChoice(event.target);
   if (event.target.name === "patterns") animatePatternChoice(event.target);
+  if (getValue("trend") && getPatterns().length === 1) scheduleAutomaticAdvance("observe", "act");
 });
 
 document.querySelectorAll("[data-next]").forEach((button) => {
@@ -4400,7 +4616,23 @@ document.querySelectorAll("[data-back]").forEach((button) => {
   button.addEventListener("click", () => setStep(button.dataset.back));
 });
 
-document.querySelectorAll('input[name="action"]').forEach((input) => input.addEventListener("change", updatePlanMode));
+document.querySelectorAll('input[name="action"]').forEach((input) => input.addEventListener("change", () => {
+  updatePlanMode();
+  playDecisionChoiceSound("action", input.value, true);
+  if (input.value === "Buy" || input.value === "Sell") {
+    scheduleAutomaticAdvance("act", "plan");
+    return;
+  }
+  window.clearTimeout(actionAdvanceTimer);
+  const panel = decisionForm.querySelector('[data-step="act"]');
+  panel.classList.add("is-confirming");
+  actionAdvanceTimer = window.setTimeout(() => {
+    actionAdvanceTimer = null;
+    panel.classList.remove("is-confirming");
+    if (currentStep === "act") submitOrderDecision();
+  }, reducedMotionQuery.matches ? 80 : 420);
+}));
+document.querySelectorAll('input[name="orderType"]').forEach((input) => input.addEventListener("change", updateOrderType));
 document.querySelector('input[name="entry"]').addEventListener("input", () => {
   syncPositionInputs(lastPositionSource, true);
   playPlanLineSound("entry");
@@ -4435,77 +4667,9 @@ document.querySelector("#patternGrid").addEventListener("change", (event) => {
 document.querySelector("#lockDecision").addEventListener("click", beginCommitmentMoment);
 document.querySelector("#beginCommittedReplay").addEventListener("click", confirmCommittedReplay);
 document.querySelector("#reviewCommittedPlan").addEventListener("click", reviewCommittedPlan);
-
-revealContinue.addEventListener("click", advanceRevealWalkthrough);
-
-revealBack.addEventListener("click", async () => {
-  if (!revealCompletion || revealTransitioning) return;
-  const previousIndex = revealIsSummary ? activeScenario.annotation.stages.length - 1 : revealStageIndex - 1;
-  await renderRevealStage(Math.max(-1, previousIndex));
-});
-
-revealPause.addEventListener("click", async () => {
-  if (!revealCompletion) return;
-  revealPaused = !revealPaused;
-  clearRevealAutoplay();
-  if (revealPaused) stopCoachAudio();
-  updateRevealControls();
-  if (!revealPaused) {
-    await speakRevealText();
-    scheduleRevealAutoplay();
-    revealContinue.focus({ preventScroll: true });
-  }
-});
-
-revealReplayVoice.addEventListener("click", async () => {
-  if (!revealCompletion || revealTransitioning || revealPaused) return;
-  clearRevealAutoplay();
-  await speakRevealText();
-  scheduleRevealAutoplay();
-  revealReplayVoice.focus({ preventScroll: true });
-});
-
-revealRestart.addEventListener("click", async () => {
-  if (!revealCompletion || revealTransitioning) return;
-  revealPaused = false;
-  await renderRevealStage(-1);
-});
-
-revealSkip.addEventListener("click", async () => {
-  if (!revealCompletion || revealTransitioning) return;
-  revealPaused = false;
-  await renderRevealStage(activeScenario.annotation.stages.length);
-});
-
-revealAutoplay.addEventListener("change", () => {
-  if (revealAutoplay.checked) scheduleRevealAutoplay();
-  else clearRevealAutoplay();
-});
-
-revealText.addEventListener("mouseenter", () => {
-  revealInteractionHold = true;
-  clearRevealAutoplay();
-});
-
-revealText.addEventListener("mouseleave", () => {
-  revealInteractionHold = false;
-  scheduleRevealAutoplay();
-});
-
-revealText.addEventListener("focusin", () => {
-  revealInteractionHold = true;
-  clearRevealAutoplay();
-});
-
-revealText.addEventListener("focusout", () => {
-  revealInteractionHold = false;
-  scheduleRevealAutoplay();
-});
-
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden) clearRevealAutoplay();
-  else scheduleRevealAutoplay();
-});
+document.querySelector("#submitOrder").addEventListener("click", submitOrderDecision);
+document.querySelector("#maxOrder").addEventListener("click", applyMaximumOrder);
+document.querySelector("#debriefNextLesson").addEventListener("click", () => nextScenarioButton.click());
 
 tradeChart.addEventListener("pointerdown", (event) => {
   if (markingMode || studyModeActive) return;
@@ -4694,23 +4858,28 @@ document.querySelector("#nextScenario").addEventListener("click", () => {
   document.querySelector("#decisionPanel").scrollIntoView({ behavior: reducedMotionQuery.matches ? "auto" : "smooth", block: "start" });
 });
 
+reviewPosterNext.addEventListener("click", openTradeDebriefFromPoster);
+
 document.querySelector("#reviewReplay").addEventListener("click", async () => {
   if (replayRunning) return;
   postReplaySequenceId += 1;
+  guidedReviewSequenceId += 1;
   stopCoachAudio();
+  reviewPosterNext.classList.remove("is-visible");
+  reviewPosterNext.hidden = true;
   resultStep.hidden = true;
   replayHero.classList.remove("is-visible");
   replayHero.hidden = true;
   decisionLab.classList.remove("is-reflecting");
   labWorkspace.classList.remove("is-debrief", "is-pattern-reveal");
   decisionPanel.classList.remove("is-debrief", "is-coach-arrival");
+  setGuidedReviewPhase("idle");
   revealedFuture = 0;
   chartScrollProgress = 0;
   xrayProgress = 0;
   futureMask.classList.remove("is-open");
   chartStatus.textContent = "Review replay ready";
   drawTradeChart();
-  transitionToReplayMusic();
   await runReplay();
 });
 

@@ -65,7 +65,7 @@
           </button>
           <div class="practice-balance" id="practiceBalanceWidget" aria-live="polite">
             <span>Practice capital</span>
-            <strong id="practiceBalance">$10,000.00</strong>
+            <strong id="practiceBalance">$2,500.00</strong>
             <small id="practiceBalanceChange">Starting balance</small>
           </div>
         </div>
@@ -175,23 +175,9 @@
               <span>Coach drawing</span>
               <strong id="chartCoachCueText">One last look.</strong>
             </div>
-            <section class="reveal-walkthrough" id="revealWalkthrough" aria-labelledby="revealHeading" hidden>
-              <header>
-                <span id="revealProgress">Ready</span>
-                <label class="reveal-autoplay"><input id="revealAutoplay" type="checkbox"> Autoplay</label>
-              </header>
-              <div class="reveal-text" id="revealText" tabindex="0" role="status" aria-live="polite" aria-atomic="true">
-                <h3 id="revealHeading">Read the evidence</h3>
-                <p id="revealBody">The explanation waits for you.</p>
-                <ul id="revealSummary" hidden></ul>
-              </div>
-              <div class="reveal-controls">
-                <button class="secondary-action" id="revealBack" type="button">Back</button>
-                <button class="secondary-action" id="revealPause" type="button" aria-pressed="false">Pause</button>
-                <button class="secondary-action" id="revealReplayVoice" type="button">Replay line</button>
-                <button class="secondary-action" id="revealRestart" type="button">Replay Explanation</button>
-                <button class="text-action" id="revealSkip" type="button">Skip Explanation</button>
-                <button class="panel-action compact" id="revealContinue" type="button">Continue</button>
+            <section class="reveal-walkthrough" id="revealWalkthrough" aria-label="Guided Review coaching" hidden>
+              <div class="reveal-text" id="revealText" role="status" aria-live="polite" aria-atomic="true">
+                <p id="revealBody">Read the evidence in the highlighted chart area.</p>
               </div>
             </section>
             <section class="chart-study-panel" id="chartStudyPanel" aria-labelledby="chart-study-title" hidden>
@@ -199,6 +185,7 @@
               <button id="closeStudyMode" type="button" aria-label="Close Study Mode" title="Close Study Mode">&times;</button>
               <p id="studyModeStatus" aria-live="polite">Click near the level buyers defended during the pullback.</p>
             </section>
+            <button class="review-poster-next" id="reviewPosterNext" type="button" hidden>Next Lesson <span aria-hidden="true">&rarr;</span></button>
             <div class="future-mask" id="futureMask" aria-hidden="true"></div>
             <div class="replay-message" id="replayMessage" aria-live="polite"></div>
             <section class="replay-hero" id="replayHero" aria-live="polite" aria-atomic="true" hidden>
@@ -239,13 +226,12 @@
 
         <aside class="decision-panel" id="decisionPanel">
           <form id="decisionForm">
-            <section class="form-step is-active" data-step="observe" aria-labelledby="observe-title">
-              <p class="step-kicker">Observe before you act</p>
-              <h2 id="observe-title">What do you see?</h2>
-              <p class="step-intro">Read the trend and structure. There is no trade to make yet.</p>
+            <section class="form-step market-analysis-step is-active" data-step="observe" aria-labelledby="observe-title">
+              <h2 id="observe-title">Market Analysis</h2>
+              <p class="step-intro">Can you identify the trend and primary pattern?</p>
 
               <fieldset>
-                <legend>What trend do you see?</legend>
+                <legend>Market Trend</legend>
                 <div class="choice-grid trend-grid">
                   <label><input type="radio" name="trend" value="Uptrend"><span>Uptrend</span></label>
                   <label><input type="radio" name="trend" value="Downtrend"><span>Downtrend</span></label>
@@ -255,52 +241,31 @@
               </fieldset>
 
               <fieldset>
-                <legend>Which patterns do you recognize?</legend>
-                <p class="field-hint">Choose any that are supported by the chart.</p>
+                <legend>Primary Pattern</legend>
                 <div class="pattern-grid" id="patternGrid">
-                  <label><input type="checkbox" name="patterns" value="Bull Flag"><span>Bull Flag</span></label>
-                  <label><input type="checkbox" name="patterns" value="Bear Flag"><span>Bear Flag</span></label>
-                  <label><input type="checkbox" name="patterns" value="Falling Wedge"><span>Falling Wedge</span></label>
-                  <label><input type="checkbox" name="patterns" value="Rising Wedge"><span>Rising Wedge</span></label>
-                  <label><input type="checkbox" name="patterns" value="Double Bottom"><span>Double Bottom</span></label>
-                  <label><input type="checkbox" name="patterns" value="Double Top"><span>Double Top</span></label>
-                  <label><input type="checkbox" name="patterns" value="Head &amp; Shoulders"><span>Head &amp; Shoulders</span></label>
-                  <label><input type="checkbox" name="patterns" value="Inverse Head &amp; Shoulders"><span>Inverse H&amp;S</span></label>
-                  <label><input type="checkbox" name="patterns" value="Triangle"><span>Triangle</span></label>
-                  <label><input type="checkbox" name="patterns" value="Breakout"><span>Breakout</span></label>
-                  <label><input type="checkbox" name="patterns" value="Failed Breakout"><span>Failed Breakout</span></label>
-                  <label><input type="checkbox" name="patterns" value="Support Retest"><span>Support Retest</span></label>
-                  <label><input type="checkbox" name="patterns" value="Resistance Rejection"><span>Resistance Rejection</span></label>
-                  <label><input type="checkbox" name="patterns" value="Consolidation"><span>Consolidation</span></label>
-                  <label><input type="checkbox" name="patterns" value="No Clear Pattern"><span>No Clear Pattern</span></label>
+                  <label><input type="radio" name="patterns" value="Bull Flag"><span>Bull Flag</span></label>
+                  <label><input type="radio" name="patterns" value="Bear Flag"><span>Bear Flag</span></label>
+                  <label><input type="radio" name="patterns" value="Falling Wedge"><span>Falling Wedge</span></label>
+                  <label><input type="radio" name="patterns" value="Rising Wedge"><span>Rising Wedge</span></label>
+                  <label><input type="radio" name="patterns" value="Double Bottom"><span>Double Bottom</span></label>
+                  <label><input type="radio" name="patterns" value="Double Top"><span>Double Top</span></label>
+                  <label><input type="radio" name="patterns" value="Head &amp; Shoulders"><span>Head &amp; Shoulders</span></label>
+                  <label><input type="radio" name="patterns" value="Inverse Head &amp; Shoulders"><span>Inverse H&amp;S</span></label>
+                  <label><input type="radio" name="patterns" value="Triangle"><span>Triangle</span></label>
+                  <label><input type="radio" name="patterns" value="Breakout"><span>Breakout</span></label>
+                  <label><input type="radio" name="patterns" value="Failed Breakout"><span>Failed Breakout</span></label>
+                  <label><input type="radio" name="patterns" value="Support Retest"><span>Support Retest</span></label>
+                  <label><input type="radio" name="patterns" value="Resistance Rejection"><span>Resistance Rejection</span></label>
+                  <label><input type="radio" name="patterns" value="Consolidation"><span>Consolidation</span></label>
+                  <label><input type="radio" name="patterns" value="No Clear Pattern"><span>No Clear Pattern</span></label>
                 </div>
               </fieldset>
-
-              <label class="text-field">
-                <span>Describe what you see <small>Optional</small></span>
-                <textarea name="observation" rows="3" maxlength="180" placeholder="Price is making higher highs, then pulling back on lighter volume..."></textarea>
-              </label>
-
-              <fieldset>
-                <legend>Confidence</legend>
-                <div class="confidence-row" aria-label="Confidence from 1 to 5">
-                  <label><input type="radio" name="confidence" value="1"><span>1</span></label>
-                  <label><input type="radio" name="confidence" value="2"><span>2</span></label>
-                  <label><input type="radio" name="confidence" value="3"><span>3</span></label>
-                  <label><input type="radio" name="confidence" value="4"><span>4</span></label>
-                  <label><input type="radio" name="confidence" value="5"><span>5</span></label>
-                </div>
-                <div class="confidence-scale" aria-hidden="true"><span>Unsure</span><span>Very confident</span></div>
-              </fieldset>
-
               <p class="form-error" id="observeError" role="alert"></p>
-              <button class="panel-action" data-next="act" type="button">Continue to decision <span aria-hidden="true">&rarr;</span></button>
             </section>
 
             <section class="form-step" data-step="act" aria-labelledby="act-title">
-              <p class="step-kicker">Make the call</p>
-              <h2 id="act-title">What would you do?</h2>
-              <p class="step-intro">Choose the action your analysis supports. Waiting is a decision.</p>
+              <h2 id="act-title">Trade Decision</h2>
+              <p class="step-intro">Choose the action that fits your read.</p>
               <fieldset>
                 <legend class="sr-only">Trade action</legend>
                 <div class="action-grid">
@@ -311,50 +276,63 @@
                 </div>
               </fieldset>
               <p class="form-error" id="actError" role="alert"></p>
-              <div class="panel-actions"><button class="text-action" data-back="observe" type="button">Back</button><button class="panel-action compact" data-next="plan" type="button">Build the plan <span aria-hidden="true">&rarr;</span></button></div>
+              <button class="text-action" data-back="observe" type="button">Back</button>
             </section>
 
-            <section class="form-step" data-step="plan" aria-labelledby="plan-title">
-              <p class="step-kicker">Define the risk</p>
-              <h2 id="plan-title">Plan before the outcome.</h2>
-              <p class="step-intro" id="planIntro">A complete trade names the exit before the market decides.</p>
+            <section class="form-step order-entry-step" data-step="plan" aria-labelledby="plan-title">
+              <div class="order-heading">
+                <div><p class="step-kicker">Execution</p><h2 id="plan-title">Order Entry</h2></div>
+                <strong class="order-side" id="orderSide">Buy</strong>
+              </div>
+              <p class="step-intro" id="planIntro">Set the execution and define where your thesis is invalidated.</p>
 
               <div id="tradeFields" class="trade-fields">
-                <section class="practice-account-card" aria-labelledby="practice-account-title">
-                  <div class="account-card-heading"><div><span id="practice-account-title">Practice account</span><small>Available cash</small></div><strong id="planningAccountBalance">$10,000.00</strong></div>
-                  <div class="account-allocation" id="accountAllocation" aria-label="Account allocation">
-                    <span class="allocation-position" id="allocationPosition"></span>
-                    <span class="allocation-cash" id="allocationCash"></span>
+                <section class="practice-account-card order-account" aria-labelledby="practice-account-title">
+                  <div class="account-card-heading"><span id="practice-account-title">Practice Account</span><small>Cash account</small></div>
+                  <div class="order-account-grid" aria-live="polite">
+                    <div><span>Available Cash</span><strong id="planningAccountBalance">$2,500.00</strong></div>
+                    <div><span>Position Value</span><strong id="accountPositionValue">$0.00</strong></div>
+                    <div><span>Unrealized P/L</span><strong id="accountUnrealizedPL">$0.00</strong></div>
+                    <div><span>Realized P/L</span><strong id="accountRealizedPL">$0.00</strong></div>
+                    <div><span>Total Account Value</span><strong id="metricAccountValue">$2,500.00</strong></div>
+                    <div><span>Buying Power</span><strong id="accountBuyingPower">$2,500.00</strong></div>
                   </div>
-                  <div class="allocation-legend"><span><i></i>Planned position <strong id="allocationPositionLabel">32%</strong></span><span><i></i>Available cash <strong id="allocationCashLabel">68%</strong></span></div>
                 </section>
 
-                <div class="price-plan-grid">
-                  <label class="number-field"><span>Entry</span><span class="input-shell">$<input type="number" name="entry" value="48.20" min="1" step="0.01" inputmode="decimal"></span></label>
-                  <label class="number-field"><span>Stop loss</span><span class="input-shell">$<input type="number" name="stop" value="46.90" min="1" step="0.01" inputmode="decimal"></span></label>
-                  <label class="number-field"><span>Profit target</span><span class="input-shell">$<input type="number" name="target" value="52.10" min="1" step="0.01" inputmode="decimal"></span></label>
-                </div>
-
-                <fieldset class="position-controls">
-                  <legend>Position size</legend>
-                  <p class="field-hint">Adjust any one control. The others stay synchronized.</p>
-                  <div class="position-input-grid">
-                    <label class="number-field" data-position-method="amount"><span>Dollar amount</span><span class="input-shell">$<input id="positionAmount" type="number" name="positionAmount" value="3200" min="0" max="10000" step="50" inputmode="decimal"></span></label>
-                    <label class="number-field" data-position-method="units"><span>Shares / units</span><span class="input-shell"><input id="positionUnits" type="number" name="positionUnits" value="66.39" min="0" step="0.01" inputmode="decimal"></span></label>
-                    <label class="number-field" data-position-method="percent"><span>Percent of account</span><span class="input-shell"><input id="positionPercent" type="number" name="positionPercent" value="32" min="0" max="100" step="1" inputmode="decimal">%</span></label>
+                <fieldset class="order-type-control">
+                  <legend>Order Type</legend>
+                  <div class="segmented-control">
+                    <label><input type="radio" name="orderType" value="Market" checked><span>Market</span></label>
+                    <label><input type="radio" name="orderType" value="Limit"><span>Limit</span></label>
                   </div>
                 </fieldset>
 
+                <div class="order-input-grid">
+                  <label class="number-field entry-field"><span id="entryFieldLabel">Market Price</span><span class="input-shell">$<input type="number" name="entry" value="48.20" min="1" step="0.01" inputmode="decimal" readonly></span></label>
+                  <label class="number-field" data-position-method="units"><span>Quantity</span><span class="input-shell"><input id="positionUnits" type="number" name="positionUnits" value="16.60" min="0" step="0.01" inputmode="decimal"></span></label>
+                  <label class="number-field" data-position-method="amount"><span>Dollar Amount</span><span class="input-shell">$<input id="positionAmount" type="number" name="positionAmount" value="800.00" min="0" step="0.01" inputmode="decimal"></span></label>
+                  <label class="number-field"><span>Stop Loss</span><span class="input-shell">$<input type="number" name="stop" value="46.90" min="1" step="0.01" inputmode="decimal"></span></label>
+                  <label class="number-field"><span>Take Profit</span><span class="input-shell">$<input type="number" name="target" value="52.10" min="1" step="0.01" inputmode="decimal"></span></label>
+                  <button class="max-order-button" id="maxOrder" type="button">Max Buy</button>
+                </div>
+
+                <input id="positionPercent" type="hidden" name="positionPercent" value="32">
+
                 <input id="accountRiskInput" type="hidden" name="risk" value="0.9">
 
-                <div class="capital-metrics" aria-live="polite">
-                  <div><span>Remaining cash after entry</span><strong id="metricAvailableCash">$6,800.00</strong></div>
-                  <div><span>Position value</span><strong id="metricPositionValue">$3,200.00</strong></div>
-                  <div><span>Position size</span><strong id="metricPositionUnits">66.39 units</strong></div>
-                  <div><span>Dollars at risk</span><strong id="metricDollarsRisk">$86.31</strong></div>
-                  <div class="metric-loss"><span>Maximum planned loss</span><strong id="metricMaxLoss">$86.31</strong></div>
+                <div class="order-preview-grid" aria-live="polite">
+                  <div><span>Estimated Cost</span><strong id="estimatedCost">$800.00</strong></div>
+                  <div><span>Available Cash After</span><strong id="metricAvailableCash">$1,700.00</strong></div>
+                  <div><span>Position Size</span><strong id="metricPositionUnits">16.60 units</strong></div>
+                  <div><span>Position Value</span><strong id="metricPositionValue">$800.00</strong></div>
+                  <div><span>Buying Power After</span><strong id="metricBuyingPowerAfter">$1,700.00</strong></div>
+                </div>
+
+                <div class="capital-metrics order-risk-metrics" aria-live="polite">
+                  <div><span>Dollars at risk</span><strong id="metricDollarsRisk">$21.58</strong></div>
+                  <div class="metric-loss"><span>Maximum planned loss</span><strong id="metricMaxLoss">$21.58</strong></div>
                   <div><span>Account at risk</span><strong id="metricAccountRisk">0.9%</strong></div>
-                  <div><span>Potential gain</span><strong id="metricPotentialGain">$258.92</strong></div>
+                  <div><span>Potential gain</span><strong id="metricPotentialGain">$64.72</strong></div>
                   <div><span>Risk / reward</span><strong id="riskRatio">3.0 : 1</strong></div>
                 </div>
 
@@ -370,8 +348,8 @@
                 <textarea name="reason" rows="5" maxlength="220" placeholder="I would need to see..."></textarea>
               </label>
 
-              <p class="form-error" id="planError" role="alert"></p>
-              <div class="panel-actions"><button class="text-action" data-back="act" type="button">Back</button><button class="panel-action compact" data-next="review" type="button">Review decision <span aria-hidden="true">&rarr;</span></button></div>
+              <p class="form-error order-validation" id="planError" role="alert"></p>
+              <div class="panel-actions order-actions"><button class="text-action" data-back="act" type="button">Back</button><button class="panel-action compact lock-action" id="submitOrder" type="button">Submit Order</button></div>
             </section>
 
             <section class="form-step" data-step="review" aria-labelledby="review-title">
@@ -401,6 +379,21 @@
           </form>
 
           <section class="result-step" id="resultStep" hidden aria-labelledby="result-title">
+            <section class="trade-debrief-summary" id="tradeDebriefSummary" hidden aria-labelledby="trade-debrief-title">
+              <header><span>Lesson complete</span><h2 id="trade-debrief-title">Trade Debrief</h2></header>
+              <div class="debrief-quality"><span>Decision Quality</span><strong id="debriefDecisionQuality">Excellent</strong></div>
+              <section aria-labelledby="community-results-title">
+                <h3 id="community-results-title">Community Results</h3>
+                <dl><div><dt>Trend</dt><dd>92% identified correctly</dd></div><div><dt>Pattern</dt><dd>41% identified correctly</dd></div></dl>
+              </section>
+              <section aria-labelledby="growth-title">
+                <h3 id="growth-title">Your Growth</h3>
+                <dl id="growthMetrics"><div><dt>Trend</dt><dd id="growthTrend">81%</dd></div><div><dt>Pattern</dt><dd id="growthPattern">74%</dd></div></dl>
+                <p id="growthFallback" hidden>Complete a few more lessons to begin tracking your growth.</p>
+              </section>
+              <section class="debrief-takeaway" aria-labelledby="takeaway-title"><h3 id="takeaway-title">Takeaway</h3><p id="debriefTakeaway">Confirmation beats anticipation.</p></section>
+              <button class="panel-action compact" id="debriefNextLesson" type="button">Start Next Lesson <span aria-hidden="true">&rarr;</span></button>
+            </section>
             <header class="lesson-panel-heading" id="lessonPanelHeading">
               <div><p class="step-kicker">Game film review</p><h2 id="result-title">Let&#39;s review the decision.</h2></div>
               <span id="resultScenarioName">The Steady Climb</span>
@@ -525,12 +518,12 @@
 
   <div class="capital-result" id="capitalResult" role="status" aria-live="polite" aria-atomic="true" hidden>
     <span>Practice capital</span>
-    <strong id="capitalResultAmount">$10,000.00</strong>
+    <strong id="capitalResultAmount">$2,500.00</strong>
     <small id="capitalResultChange">Current balance</small>
   </div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="js/config.js"></script>
   <script src="js/audio-manifest.js"></script>
-  <script src="js/main.js?v=20260716-reveal-pacing-1"></script>
+  <script src="js/main.js?v=20260717-account-review-2"></script>
 </body>
 </html>
