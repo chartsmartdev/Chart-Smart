@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Practice reading charts, planning risk, and making disciplined investing decisions in Chart Smart Decision Lab.">
+  <meta name="theme-color" content="#07110f">
+  <meta property="og:title" content="Chart Smart Decision Lab">
+  <meta property="og:description" content="Financial IQ. Not Financial Advice. Practice the decision before you see the outcome.">
+  <title>Chart Smart Decision Lab</title>
+  <link rel="stylesheet" href="css/styles.css?v=20260716-reveal-pacing-1">
+</head>
+<body>
+  <main>
+    <section class="launch" id="launch" aria-labelledby="launch-title">
+      <canvas class="launch-chart" id="launchChart" aria-hidden="true"></canvas>
+      <div class="launch-shade" aria-hidden="true"></div>
+
+      <header class="launch-header">
+        <a class="brand" href="#launch" aria-label="Chart Smart home">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span>Chart Smart</span>
+        </a>
+        <span class="version">Decision Lab / v0.1</span>
+      </header>
+
+      <div class="launch-copy">
+        <p class="eyebrow">Learn the chart. Train the decision.</p>
+        <h1 id="launch-title">Financial IQ.<br>Not Financial Advice.</h1>
+        <p class="principle">The market rewards outcomes.<br><strong>Chart Smart rewards decisions.</strong></p>
+        <button class="primary-action" id="startLab" type="button">
+          <span>Start practice trade</span>
+          <span aria-hidden="true">&rarr;</span>
+        </button>
+        <p class="launch-note">Five hidden charts. No real money. Your process gets the grade.</p>
+      </div>
+
+      <div class="launch-footer" aria-label="Practice session details">
+        <span>05 scenarios</span>
+        <span>Handcrafted practice</span>
+        <span>100% educational</span>
+      </div>
+    </section>
+
+    <section class="loading-screen" id="loadingScreen" aria-labelledby="loading-title" hidden>
+      <div class="loading-inner">
+        <span class="brand-mark loading-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <p id="loading-title">Preparing Decision Lab</p>
+        <div class="loading-sequence" aria-live="polite" aria-atomic="true">
+          <span class="loading-message is-visible" id="loadingMessage">Reviewing historical candles...</span>
+          <span class="loading-check" id="loadingCheck" aria-hidden="true">&#10003;</span>
+        </div>
+        <div class="loading-progress" aria-hidden="true"><span id="loadingProgress"></span></div>
+        <div class="loading-meta"><small id="loadingStage">01 / 03</small><small>Historical simulation</small></div>
+        <blockquote class="loading-quote"><span id="loadingQuote">Discipline compounds.</span></blockquote>
+      </div>
+    </section>
+
+    <section class="lab" id="decisionLab" aria-labelledby="lab-title" hidden>
+      <header class="lab-header">
+        <div class="brand-cluster">
+          <button class="brand brand-button" id="exitLab" type="button" aria-label="Exit Decision Lab">
+            <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+            <span>Chart Smart</span>
+          </button>
+          <div class="practice-balance" id="practiceBalanceWidget" aria-live="polite">
+            <span>Practice capital</span>
+            <strong id="practiceBalance">$10,000.00</strong>
+            <small id="practiceBalanceChange">Starting balance</small>
+          </div>
+        </div>
+        <div class="scenario-id">
+          <span>Decision Lab</span>
+          <strong id="scenarioName">Unknown market / The Steady Climb</strong>
+          <small id="scenarioDifficulty">Foundation</small>
+        </div>
+        <div class="session-controls" aria-label="Audio controls">
+          <button class="sound-toggle" id="soundToggle" type="button" aria-pressed="true" title="Turn feedback sounds off">
+            <span class="sound-indicator" aria-hidden="true"></span>
+            <span id="soundLabel">Effects on</span>
+          </button>
+          <button class="sound-toggle" id="musicToggle" type="button" aria-pressed="true" title="Turn focus music off">
+            <span class="music-indicator" aria-hidden="true"></span>
+            <span id="musicLabel">Focus music on</span>
+          </button>
+          <label class="volume-control">
+            <span>Volume</span>
+            <input id="volumeControl" type="range" min="0" max="100" value="78" step="1" aria-label="Master audio volume">
+            <output id="volumeValue" for="volumeControl">78%</output>
+          </label>
+          <details class="coach-settings" id="coachSettings">
+            <summary>Coach voice</summary>
+            <div class="coach-settings-panel">
+              <button class="sound-toggle coach-voice-toggle" id="coachVoiceToggle" type="button" aria-pressed="true">
+                <span class="coach-voice-indicator" aria-hidden="true"></span>
+                <span id="coachVoiceLabel">Coach voice on</span>
+              </button>
+              <label class="coach-setting-row" for="coachVolume">
+                <span>Coach volume</span>
+                <input id="coachVolume" type="range" min="0" max="100" value="82" step="1">
+                <output id="coachVolumeValue" for="coachVolume">82%</output>
+              </label>
+              <label class="coach-setting-row coach-personality" for="coachPersonality">
+                <span>Personality</span>
+                <select id="coachPersonality">
+                  <option value="witty-mentor" selected>Witty Mentor</option>
+                  <option value="professional-coach">Professional Coach</option>
+                </select>
+              </label>
+              <button class="secondary-action coach-preview" id="previewCoachVoice" type="button">Preview voice</button>
+              <button class="sound-toggle humor-animation-toggle" id="humorAnimationToggle" type="button" aria-pressed="true">
+                <span class="humor-animation-indicator" aria-hidden="true"></span>
+                <span id="humorAnimationLabel">Humorous animations on</span>
+              </button>
+              <label class="browser-speech-test" id="browserSpeechTestControl" hidden>
+                <input id="browserSpeechTest" type="checkbox">
+                <span>Browser speech test</span>
+              </label>
+              <p class="coach-preview-caption" id="coachPreviewCaption" hidden>
+                <span>Coach says</span>
+                <q id="coachPreviewText"></q>
+              </p>
+              <small id="coachVoiceStatus">Text fallback ready</small>
+            </div>
+          </details>
+          <span class="sr-only" id="audioState" aria-live="polite">Effects on. Focus music on. Volume 78 percent.</span>
+        </div>
+      </header>
+
+      <div class="progress-shell" aria-label="Decision Lab progress">
+        <div class="progress-copy">
+          <span id="stepLabel">Step 1 of 5</span>
+          <strong id="stepName">Read the chart</strong>
+        </div>
+        <div class="progress-track" aria-hidden="true"><span id="progressFill"></span></div>
+        <div class="timer-controls" aria-label="Planning timer controls">
+          <label for="timerMode">Planning</label>
+          <select id="timerMode">
+            <option value="relaxed">Relaxed</option>
+            <option value="standard" selected>Standard / 90 sec</option>
+            <option value="challenge">Challenge / 45 sec</option>
+          </select>
+          <strong id="timerDisplay" aria-live="off">01:30</strong>
+          <button id="timerPause" type="button" aria-pressed="false">Pause</button>
+        </div>
+        <p class="timer-message" id="timerMessage" aria-live="polite"></p>
+      </div>
+
+      <div class="lab-workspace">
+        <section class="chart-stage" aria-labelledby="chart-heading">
+          <div class="chart-toolbar">
+            <div>
+              <span class="status-dot"></span>
+              <span id="chartStatus">Future candles hidden</span>
+            </div>
+            <div class="hidden-market">
+              <span>Ticker hidden</span>
+              <span>Date hidden</span>
+              <span>News hidden</span>
+            </div>
+          </div>
+
+          <h2 class="sr-only" id="chart-heading">Anonymous candlestick chart</h2>
+          <div class="chart-wrap" id="chartWrap">
+            <canvas id="tradeChart" role="img" aria-label="Anonymous candlestick chart showing an upward move followed by a compact pullback. Future candles are hidden."></canvas>
+            <div class="ohlcv-readout" id="ohlcvReadout" aria-live="off">
+              <span class="readout-context" id="readoutContext">Latest visible candle</span>
+              <span><b>Open</b><strong id="readoutOpen">--</strong></span>
+              <span><b>High</b><strong id="readoutHigh">--</strong></span>
+              <span><b>Low</b><strong id="readoutLow">--</strong></span>
+              <span><b>Close</b><strong id="readoutClose">--</strong></span>
+              <span><b>Volume</b><strong id="readoutVolume">--</strong></span>
+            </div>
+            <div class="chart-coach-cue" id="chartCoachCue" role="status" aria-live="polite" aria-atomic="true" hidden>
+              <span>Coach drawing</span>
+              <strong id="chartCoachCueText">One last look.</strong>
+            </div>
+            <section class="reveal-walkthrough" id="revealWalkthrough" aria-labelledby="revealHeading" hidden>
+              <header>
+                <span id="revealProgress">Ready</span>
+                <label class="reveal-autoplay"><input id="revealAutoplay" type="checkbox"> Autoplay</label>
+              </header>
+              <div class="reveal-text" id="revealText" tabindex="0" role="status" aria-live="polite" aria-atomic="true">
+                <h3 id="revealHeading">Read the evidence</h3>
+                <p id="revealBody">The explanation waits for you.</p>
+                <ul id="revealSummary" hidden></ul>
+              </div>
+              <div class="reveal-controls">
+                <button class="secondary-action" id="revealBack" type="button">Back</button>
+                <button class="secondary-action" id="revealPause" type="button" aria-pressed="false">Pause</button>
+                <button class="secondary-action" id="revealReplayVoice" type="button">Replay line</button>
+                <button class="secondary-action" id="revealRestart" type="button">Replay Explanation</button>
+                <button class="text-action" id="revealSkip" type="button">Skip Explanation</button>
+                <button class="panel-action compact" id="revealContinue" type="button">Continue</button>
+              </div>
+            </section>
+            <section class="chart-study-panel" id="chartStudyPanel" aria-labelledby="chart-study-title" hidden>
+              <div><span>Study Mode</span><strong id="chart-study-title">Show me where support formed.</strong></div>
+              <button id="closeStudyMode" type="button" aria-label="Close Study Mode" title="Close Study Mode">&times;</button>
+              <p id="studyModeStatus" aria-live="polite">Click near the level buyers defended during the pullback.</p>
+            </section>
+            <div class="future-mask" id="futureMask" aria-hidden="true"></div>
+            <div class="replay-message" id="replayMessage" aria-live="polite"></div>
+            <section class="replay-hero" id="replayHero" aria-live="polite" aria-atomic="true" hidden>
+              <div class="replay-hero-check" aria-hidden="true">&#10003;</div>
+              <strong id="replayHeroPattern">Bull Flag Identified</strong>
+              <h2 id="replayHeroDecision">Excellent Decision</h2>
+              <div class="replay-rewards">
+                <span id="replayXp">+125 XP</span>
+                <span id="replayVisionGain">Market Vision +3</span>
+                <span id="replayDisciplineGain">Discipline +2</span>
+              </div>
+            </section>
+            <div class="pattern-discovery-label" id="patternDiscoveryLabel" role="status" aria-live="polite" hidden>
+              <span aria-hidden="true">&#10003;</span>
+              <strong id="patternDiscoveryName">Bull Flag</strong>
+            </div>
+            <section class="falling-knife-overlay" id="fallingKnifeOverlay" role="status" aria-live="polite" aria-atomic="true" hidden>
+              <div class="falling-knife-scene" aria-hidden="true">
+                <span class="cartoon-knife"><i></i></span>
+                <span class="cartoon-knife"><i></i></span>
+                <span class="cartoon-knife"><i></i></span>
+                <span class="cartoon-knife"><i></i></span>
+                <div class="cartoon-hand"><i></i><i></i><i></i><i></i></div>
+              </div>
+              <div class="falling-knife-copy">
+                <strong>Catching a falling knife</strong>
+                <span>Downtrend intact. Reversal confirmation missing.</span>
+              </div>
+            </section>
+          </div>
+
+          <div class="chart-legend" aria-hidden="true">
+            <span><i class="legend-up"></i>Price up</span>
+            <span><i class="legend-down"></i>Price down</span>
+            <span><i class="legend-volume"></i>Volume</span>
+          </div>
+        </section>
+
+        <aside class="decision-panel" id="decisionPanel">
+          <form id="decisionForm">
+            <section class="form-step is-active" data-step="observe" aria-labelledby="observe-title">
+              <p class="step-kicker">Observe before you act</p>
+              <h2 id="observe-title">What do you see?</h2>
+              <p class="step-intro">Read the trend and structure. There is no trade to make yet.</p>
+
+              <fieldset>
+                <legend>What trend do you see?</legend>
+                <div class="choice-grid trend-grid">
+                  <label><input type="radio" name="trend" value="Uptrend"><span>Uptrend</span></label>
+                  <label><input type="radio" name="trend" value="Downtrend"><span>Downtrend</span></label>
+                  <label><input type="radio" name="trend" value="Range"><span>Range</span></label>
+                  <label><input type="radio" name="trend" value="Unclear"><span>Unclear</span></label>
+                </div>
+              </fieldset>
+
+              <fieldset>
+                <legend>Which patterns do you recognize?</legend>
+                <p class="field-hint">Choose any that are supported by the chart.</p>
+                <div class="pattern-grid" id="patternGrid">
+                  <label><input type="checkbox" name="patterns" value="Bull Flag"><span>Bull Flag</span></label>
+                  <label><input type="checkbox" name="patterns" value="Bear Flag"><span>Bear Flag</span></label>
+                  <label><input type="checkbox" name="patterns" value="Falling Wedge"><span>Falling Wedge</span></label>
+                  <label><input type="checkbox" name="patterns" value="Rising Wedge"><span>Rising Wedge</span></label>
+                  <label><input type="checkbox" name="patterns" value="Double Bottom"><span>Double Bottom</span></label>
+                  <label><input type="checkbox" name="patterns" value="Double Top"><span>Double Top</span></label>
+                  <label><input type="checkbox" name="patterns" value="Head &amp; Shoulders"><span>Head &amp; Shoulders</span></label>
+                  <label><input type="checkbox" name="patterns" value="Inverse Head &amp; Shoulders"><span>Inverse H&amp;S</span></label>
+                  <label><input type="checkbox" name="patterns" value="Triangle"><span>Triangle</span></label>
+                  <label><input type="checkbox" name="patterns" value="Breakout"><span>Breakout</span></label>
+                  <label><input type="checkbox" name="patterns" value="Failed Breakout"><span>Failed Breakout</span></label>
+                  <label><input type="checkbox" name="patterns" value="Support Retest"><span>Support Retest</span></label>
+                  <label><input type="checkbox" name="patterns" value="Resistance Rejection"><span>Resistance Rejection</span></label>
+                  <label><input type="checkbox" name="patterns" value="Consolidation"><span>Consolidation</span></label>
+                  <label><input type="checkbox" name="patterns" value="No Clear Pattern"><span>No Clear Pattern</span></label>
+                </div>
+              </fieldset>
+
+              <label class="text-field">
+                <span>Describe what you see <small>Optional</small></span>
+                <textarea name="observation" rows="3" maxlength="180" placeholder="Price is making higher highs, then pulling back on lighter volume..."></textarea>
+              </label>
+
+              <fieldset>
+                <legend>Confidence</legend>
+                <div class="confidence-row" aria-label="Confidence from 1 to 5">
+                  <label><input type="radio" name="confidence" value="1"><span>1</span></label>
+                  <label><input type="radio" name="confidence" value="2"><span>2</span></label>
+                  <label><input type="radio" name="confidence" value="3"><span>3</span></label>
+                  <label><input type="radio" name="confidence" value="4"><span>4</span></label>
+                  <label><input type="radio" name="confidence" value="5"><span>5</span></label>
+                </div>
+                <div class="confidence-scale" aria-hidden="true"><span>Unsure</span><span>Very confident</span></div>
+              </fieldset>
+
+              <p class="form-error" id="observeError" role="alert"></p>
+              <button class="panel-action" data-next="act" type="button">Continue to decision <span aria-hidden="true">&rarr;</span></button>
+            </section>
+
+            <section class="form-step" data-step="act" aria-labelledby="act-title">
+              <p class="step-kicker">Make the call</p>
+              <h2 id="act-title">What would you do?</h2>
+              <p class="step-intro">Choose the action your analysis supports. Waiting is a decision.</p>
+              <fieldset>
+                <legend class="sr-only">Trade action</legend>
+                <div class="action-grid">
+                  <label><input type="radio" name="action" value="Buy"><span><strong>Buy</strong><small>Trade continuation</small></span></label>
+                  <label><input type="radio" name="action" value="Sell"><span><strong>Sell</strong><small>Trade reversal</small></span></label>
+                  <label><input type="radio" name="action" value="Wait"><span><strong>Wait</strong><small>Need confirmation</small></span></label>
+                  <label><input type="radio" name="action" value="Skip"><span><strong>Skip</strong><small>No clear edge</small></span></label>
+                </div>
+              </fieldset>
+              <p class="form-error" id="actError" role="alert"></p>
+              <div class="panel-actions"><button class="text-action" data-back="observe" type="button">Back</button><button class="panel-action compact" data-next="plan" type="button">Build the plan <span aria-hidden="true">&rarr;</span></button></div>
+            </section>
+
+            <section class="form-step" data-step="plan" aria-labelledby="plan-title">
+              <p class="step-kicker">Define the risk</p>
+              <h2 id="plan-title">Plan before the outcome.</h2>
+              <p class="step-intro" id="planIntro">A complete trade names the exit before the market decides.</p>
+
+              <div id="tradeFields" class="trade-fields">
+                <section class="practice-account-card" aria-labelledby="practice-account-title">
+                  <div class="account-card-heading"><div><span id="practice-account-title">Practice account</span><small>Available cash</small></div><strong id="planningAccountBalance">$10,000.00</strong></div>
+                  <div class="account-allocation" id="accountAllocation" aria-label="Account allocation">
+                    <span class="allocation-position" id="allocationPosition"></span>
+                    <span class="allocation-cash" id="allocationCash"></span>
+                  </div>
+                  <div class="allocation-legend"><span><i></i>Planned position <strong id="allocationPositionLabel">32%</strong></span><span><i></i>Available cash <strong id="allocationCashLabel">68%</strong></span></div>
+                </section>
+
+                <div class="price-plan-grid">
+                  <label class="number-field"><span>Entry</span><span class="input-shell">$<input type="number" name="entry" value="48.20" min="1" step="0.01" inputmode="decimal"></span></label>
+                  <label class="number-field"><span>Stop loss</span><span class="input-shell">$<input type="number" name="stop" value="46.90" min="1" step="0.01" inputmode="decimal"></span></label>
+                  <label class="number-field"><span>Profit target</span><span class="input-shell">$<input type="number" name="target" value="52.10" min="1" step="0.01" inputmode="decimal"></span></label>
+                </div>
+
+                <fieldset class="position-controls">
+                  <legend>Position size</legend>
+                  <p class="field-hint">Adjust any one control. The others stay synchronized.</p>
+                  <div class="position-input-grid">
+                    <label class="number-field" data-position-method="amount"><span>Dollar amount</span><span class="input-shell">$<input id="positionAmount" type="number" name="positionAmount" value="3200" min="0" max="10000" step="50" inputmode="decimal"></span></label>
+                    <label class="number-field" data-position-method="units"><span>Shares / units</span><span class="input-shell"><input id="positionUnits" type="number" name="positionUnits" value="66.39" min="0" step="0.01" inputmode="decimal"></span></label>
+                    <label class="number-field" data-position-method="percent"><span>Percent of account</span><span class="input-shell"><input id="positionPercent" type="number" name="positionPercent" value="32" min="0" max="100" step="1" inputmode="decimal">%</span></label>
+                  </div>
+                </fieldset>
+
+                <input id="accountRiskInput" type="hidden" name="risk" value="0.9">
+
+                <div class="capital-metrics" aria-live="polite">
+                  <div><span>Remaining cash after entry</span><strong id="metricAvailableCash">$6,800.00</strong></div>
+                  <div><span>Position value</span><strong id="metricPositionValue">$3,200.00</strong></div>
+                  <div><span>Position size</span><strong id="metricPositionUnits">66.39 units</strong></div>
+                  <div><span>Dollars at risk</span><strong id="metricDollarsRisk">$86.31</strong></div>
+                  <div class="metric-loss"><span>Maximum planned loss</span><strong id="metricMaxLoss">$86.31</strong></div>
+                  <div><span>Account at risk</span><strong id="metricAccountRisk">0.9%</strong></div>
+                  <div><span>Potential gain</span><strong id="metricPotentialGain">$258.92</strong></div>
+                  <div><span>Risk / reward</span><strong id="riskRatio">3.0 : 1</strong></div>
+                </div>
+
+                <div class="risk-state" id="riskState" data-level="conservative" role="status" aria-live="polite">
+                  <span id="riskStateLabel">Conservative</span>
+                  <p id="riskNote">You are risking 0.9% of the practice account on this idea.</p>
+                  <small>Educational sizing label, not financial advice.</small>
+                </div>
+              </div>
+
+              <label class="text-field" id="reasonField" hidden>
+                <span>Why is <span id="reasonAction">waiting</span> the best decision?</span>
+                <textarea name="reason" rows="5" maxlength="220" placeholder="I would need to see..."></textarea>
+              </label>
+
+              <p class="form-error" id="planError" role="alert"></p>
+              <div class="panel-actions"><button class="text-action" data-back="act" type="button">Back</button><button class="panel-action compact" data-next="review" type="button">Review decision <span aria-hidden="true">&rarr;</span></button></div>
+            </section>
+
+            <section class="form-step" data-step="review" aria-labelledby="review-title">
+              <p class="step-kicker">Last look</p>
+              <h2 id="review-title">Own the decision.</h2>
+              <p class="step-intro">Once locked, your answers cannot be edited. The market will play forward.</p>
+              <dl class="decision-summary" id="decisionSummary"></dl>
+              <div class="lock-callout"><span aria-hidden="true">01</span><p><strong>Outcome stays hidden.</strong> Your process is saved first.</p></div>
+              <div class="panel-actions"><button class="text-action" data-back="plan" type="button">Back</button><button class="panel-action compact lock-action" id="lockDecision" type="button">COMMIT CAPITAL</button></div>
+            </section>
+
+            <section class="form-step commitment-step" data-step="commit" id="commitStep" aria-labelledby="commit-title">
+              <p class="step-kicker">Pre-commitment moment</p>
+              <h2 id="commit-title">One Last Look</h2>
+              <p class="step-intro">This is the trade you planned. The chart remains unchanged; only your decision is about to become final.</p>
+              <div class="commitment-status" id="commitmentStatus" role="status" aria-live="polite">
+                <span class="commitment-mark" aria-hidden="true"></span>
+                <strong>Capital committed.</strong>
+              </div>
+              <dl class="decision-summary commitment-summary" id="commitmentSummary"></dl>
+              <blockquote class="commit-coach-prompt" id="commitCoachPrompt">Trust your process.</blockquote>
+              <div class="commitment-actions" id="commitmentActions" hidden>
+                <button class="panel-action" id="beginCommittedReplay" type="button">Confirm and Begin Replay</button>
+                <button class="secondary-action" id="reviewCommittedPlan" type="button">Review Plan</button>
+              </div>
+            </section>
+          </form>
+
+          <section class="result-step" id="resultStep" hidden aria-labelledby="result-title">
+            <header class="lesson-panel-heading" id="lessonPanelHeading">
+              <div><p class="step-kicker">Game film review</p><h2 id="result-title">Let&#39;s review the decision.</h2></div>
+              <span id="resultScenarioName">The Steady Climb</span>
+            </header>
+
+            <div class="coach-card" id="coachCard" data-level="excellent" hidden>
+              <div class="coach-avatar" id="coachAvatar" aria-hidden="true">&#128578;</div>
+              <div class="coach-dialogue">
+                <div class="coach-identity"><span class="coach-label">Chart Smart Coach</span><small id="coachMoodLabel">Excellent</small></div>
+                <span class="coach-message-type">Coach&#39;s take</span>
+                <h3 id="coachHeadline">Nice eye.</h3>
+                <span class="coach-message-type coach-message-education">What the chart showed</span>
+                <p id="coachBody">You identified the bull flag and waited for the chart to confirm the move.</p>
+                <p class="coach-voice-caption" id="coachVoiceCaption" data-mood="neutral" hidden>
+                  <span>Coach says</span>
+                  <q id="coachVoiceText"></q>
+                </p>
+              </div>
+            </div>
+
+            <div class="coach-feedback" id="coachFeedback" hidden>
+              <section id="feedbackWell" hidden><h3><span aria-hidden="true">&#10003;</span> What You Did Well</h3><p id="feedbackWellText">You read the trend, recognized the flag, and defined the risk before the replay.</p></section>
+              <section id="feedbackWatch" hidden><h3><span aria-hidden="true">&#9888;</span> What To Watch</h3><p id="feedbackWatchText">Confirmation matters. Let the breakout prove itself before committing capital.</p></section>
+              <section id="feedbackLesson" hidden><h3><span aria-hidden="true">&#128161;</span> Key Lesson</h3><p id="feedbackLessonText">A good pattern is context plus confirmation, not a shape forced onto the chart.</p></section>
+            </div>
+
+            <div class="result-pair" id="lessonStats" hidden>
+              <div><span>Market outcome</span><strong id="marketOutcome">+8.4%</strong><small id="outcomeLabel">Profitable outcome</small></div>
+              <div><span>Decision quality</span><strong id="decisionGrade">A-</strong><small id="processLabel">Strong process</small></div>
+            </div>
+
+            <details class="lesson-secondary" id="lessonSecondary" hidden>
+              <summary>Detailed score breakdown</summary>
+              <section class="vision-card" id="visionCard" aria-labelledby="vision-title">
+                <div class="vision-heading">
+                  <div><span class="coach-label">Decision skill</span><h3 id="vision-title">Market Vision</h3></div>
+                  <strong id="marketVisionResult">91</strong>
+                </div>
+                <div class="vision-breakdown">
+                  <div><span>Trend recognition</span><strong id="visionTrend">95</strong></div>
+                  <div><span>Pattern interpretation</span><strong id="visionPattern">92</strong></div>
+                  <div><span>Support / resistance awareness</span><strong id="visionLevels">88</strong></div>
+                  <div><span>Confirmation awareness</span><strong id="visionConfirmation">89</strong></div>
+                </div>
+                <p>Clear evidence earns more than extra labels. Market Vision does not reward forced patterns.</p>
+              </section>
+            </details>
+
+            <section class="skill-progress-panel" id="skillProgressPanel" aria-labelledby="skill-progress-title" hidden>
+              <div class="skill-progress-heading"><span class="coach-label">Skills updated</span><h3 id="skill-progress-title">Progress from this decision</h3></div>
+              <div class="skill-progress-list">
+                <div class="skill-progress-row" data-start="84" data-end="87"><span>Market Vision</span><div class="skill-progress-track"><i></i></div><strong><b>84</b> <em>&rarr;</em> <span>87</span></strong></div>
+                <div class="skill-progress-row" data-start="91" data-end="92"><span>Risk Management</span><div class="skill-progress-track"><i></i></div><strong><b>91</b> <em>&rarr;</em> <span>92</span></strong></div>
+                <div class="skill-progress-row" data-start="76" data-end="79"><span>Patience</span><div class="skill-progress-track"><i></i></div><strong><b>76</b> <em>&rarr;</em> <span>79</span></strong></div>
+                <div class="skill-progress-row" data-start="72" data-end="75"><span>Pattern Interpretation</span><div class="skill-progress-track"><i></i></div><strong><b>72</b> <em>&rarr;</em> <span>75</span></strong></div>
+              </div>
+            </section>
+
+            <div class="pattern-result legacy-result-control" id="patternResult">
+              <span class="pattern-check" aria-hidden="true">&#10003;</span>
+              <div><small id="patternResultLabel">Reference pattern</small><strong id="patternResultName">Bull Flag</strong></div>
+            </div>
+
+            <section class="marking-card legacy-result-control" id="markingCard" aria-labelledby="marking-title">
+              <span class="optional-label">Optional chart exercise</span>
+              <h3 id="marking-title">Show me where you saw the pattern</h3>
+              <p>Draw up to two simple guide lines on the chart. This is for visual comparison, not geometry scoring.</p>
+              <div class="marking-actions">
+                <button class="secondary-action" id="markPattern" type="button">Mark my read</button>
+                <button class="text-action" id="clearMarks" type="button" hidden>Clear guides</button>
+              </div>
+              <p class="marking-status" id="markingStatus" aria-live="polite">You can skip this and reveal the lesson.</p>
+            </section>
+
+            <button class="panel-action xray-action legacy-result-control" id="showXray" type="button">Show Me Why <span aria-hidden="true">&rarr;</span></button>
+
+            <div class="xray-lesson legacy-result-control" id="xrayLesson" hidden>
+              <div class="lesson-step"><span>01</span><p><strong>Swing points</strong>Higher highs and higher lows established an uptrend before the pattern formed.</p></div>
+              <div class="lesson-step"><span>02</span><p><strong>Flagpole</strong>A fast, strong advance showed clear buying pressure.</p></div>
+              <div class="lesson-step"><span>03</span><p><strong>Trendlines</strong>The pullback stayed inside two gently falling guide lines instead of reversing sharply.</p></div>
+              <div class="lesson-step"><span>04</span><p><strong>Support and resistance</strong>The lower guide held as support. The upper guide became the level price needed to clear.</p></div>
+              <div class="lesson-step"><span>05</span><p><strong>Breakout area</strong>Price closed above the falling resistance line, completing the pattern.</p></div>
+              <div class="lesson-step"><span>06</span><p><strong>Volume confirmation</strong>Volume faded during the pullback, then expanded as price broke out.</p></div>
+            </div>
+
+            <footer class="lesson-ending" id="lessonEnding" hidden>
+              <p id="lessonEndingLine">You&#39;re starting to think like an investor.</p>
+              <div class="lesson-actions">
+                <button class="panel-action" id="nextScenario" type="button"><span aria-hidden="true">&#9654;</span> <span id="nextScenarioLabel">Next Scenario</span></button>
+                <button class="secondary-action" id="studySupport" type="button">Study Chart</button>
+                <button class="secondary-action" id="reviewReplay" type="button"><span aria-hidden="true">&#8634;</span> Review Replay</button>
+              </div>
+            </footer>
+
+            <button class="secondary-action legacy-result-control" id="finishSession" type="button">View session score</button>
+          </section>
+
+          <section class="end-step" id="endStep" hidden aria-labelledby="end-title">
+            <p class="step-kicker">Practice complete</p>
+            <div class="grade-seal"><span>Curriculum grade</span><strong id="finalGrade">A-</strong></div>
+            <h2 id="end-title">Five charts smarter.</h2>
+            <p class="step-intro">Progress comes from decisions you can explain, repeat, and improve.</p>
+            <div class="skill-list" id="skillList">
+              <div><span>Market Vision</span><strong id="marketVisionScore">92</strong></div>
+              <div><span>Trend reading</span><strong id="trendScore">95</strong></div>
+              <div><span>Risk management</span><strong id="riskScore">88</strong></div>
+              <div><span>Discipline</span><strong id="disciplineScore">91</strong></div>
+            </div>
+            <div class="coach-summary"><span>Coach summary</span><p id="finalCoach">Strong read. You matched the pattern with a defined plan and let confirmation carry the decision.</p></div>
+            <button class="panel-action" id="practiceAgain" type="button">Practice the curriculum again <span aria-hidden="true">&rarr;</span></button>
+            <button class="text-action center-action" id="returnHome" type="button">Return home</button>
+          </section>
+        </aside>
+      </div>
+
+      <footer class="lab-footer">
+        <span>Educational simulation only</span>
+        <span>Financial IQ. Not Financial Advice.</span>
+      </footer>
+    </section>
+  </main>
+
+  <div class="capital-result" id="capitalResult" role="status" aria-live="polite" aria-atomic="true" hidden>
+    <span>Practice capital</span>
+    <strong id="capitalResultAmount">$10,000.00</strong>
+    <small id="capitalResultChange">Current balance</small>
+  </div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="js/config.js"></script>
+  <script src="js/audio-manifest.js"></script>
+  <script src="js/main.js?v=20260716-reveal-pacing-1"></script>
+</body>
+</html>
