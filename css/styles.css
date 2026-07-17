@@ -5827,3 +5827,69 @@ body:has(#decisionLab:not([hidden])) { overflow: hidden; }
 #decisionLab[data-review-phase]:not([data-review-phase="idle"]) .timer-message {
   display: none;
 }
+
+/* Candle-level Guided Review and direction-aware order entry. */
+.order-account-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+.short-risk-note {
+  margin: 0.48rem 0 0;
+  color: #efc37b;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.short-risk-note[hidden] { display: none; }
+
+.reveal-walkthrough {
+  top: 0;
+  right: auto;
+  bottom: auto;
+  left: 0;
+  width: 18rem;
+  margin: 0;
+  opacity: 0;
+  transform: translateY(7px);
+  transition: opacity 220ms ease, transform 260ms ease;
+  will-change: left, top, opacity, transform;
+}
+
+.reveal-walkthrough.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.reveal-text {
+  min-height: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.reveal-text.is-changing {
+  opacity: 0;
+  transform: translateY(5px);
+}
+
+.reveal-text p {
+  max-width: none;
+  margin: 0;
+  color: #f5faf7;
+  font-size: 20px;
+  font-weight: 750;
+  line-height: 1.35;
+  text-shadow: 0 2px 3px rgba(0, 0, 0, 0.95), 0 0 12px rgba(0, 0, 0, 0.72);
+}
+
+@media (max-width: 760px) {
+  .order-account-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .reveal-walkthrough { bottom: auto; padding: 0; }
+  .reveal-text { min-height: 0; }
+  .reveal-text p { font-size: 18px; }
+}
+
+@media (max-width: 460px) {
+  .order-account-grid { grid-template-columns: 1fr; }
+}

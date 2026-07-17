@@ -8,7 +8,7 @@
   <meta property="og:title" content="Chart Smart Decision Lab">
   <meta property="og:description" content="Financial IQ. Not Financial Advice. Practice the decision before you see the outcome.">
   <title>Chart Smart Decision Lab</title>
-  <link rel="stylesheet" href="css/styles.css?v=20260716-reveal-pacing-1">
+  <link rel="stylesheet" href="css/styles.css?v=20260717-candle-spotlight-1">
 </head>
 <body>
   <main>
@@ -269,8 +269,8 @@
               <fieldset>
                 <legend class="sr-only">Trade action</legend>
                 <div class="action-grid">
-                  <label><input type="radio" name="action" value="Buy"><span><strong>Buy</strong><small>Trade continuation</small></span></label>
-                  <label><input type="radio" name="action" value="Sell"><span><strong>Sell</strong><small>Trade reversal</small></span></label>
+                  <label><input type="radio" name="action" value="Buy"><span><strong>Buy / Long</strong><small>Take the long side</small></span></label>
+                  <label><input type="radio" name="action" value="Sell"><span><strong>Sell / Short</strong><small>Take the short side</small></span></label>
                   <label><input type="radio" name="action" value="Wait"><span><strong>Wait</strong><small>Need confirmation</small></span></label>
                   <label><input type="radio" name="action" value="Skip"><span><strong>Skip</strong><small>No clear edge</small></span></label>
                 </div>
@@ -288,14 +288,16 @@
 
               <div id="tradeFields" class="trade-fields">
                 <section class="practice-account-card order-account" aria-labelledby="practice-account-title">
-                  <div class="account-card-heading"><span id="practice-account-title">Practice Account</span><small>Cash account</small></div>
+                  <div class="account-card-heading"><span id="practice-account-title">Practice Account</span><small>1x educational margin</small></div>
                   <div class="order-account-grid" aria-live="polite">
                     <div><span>Available Cash</span><strong id="planningAccountBalance">$2,500.00</strong></div>
-                    <div><span>Position Value</span><strong id="accountPositionValue">$0.00</strong></div>
+                    <div><span>Reserved Short Proceeds</span><strong id="accountReservedShortProceeds">$0.00</strong></div>
+                    <div><span>Position</span><strong id="accountPositionSide">Flat</strong></div>
+                    <div><span id="accountPositionValueLabel">Position Value</span><strong id="accountPositionValue">$0.00</strong></div>
                     <div><span>Unrealized P/L</span><strong id="accountUnrealizedPL">$0.00</strong></div>
                     <div><span>Realized P/L</span><strong id="accountRealizedPL">$0.00</strong></div>
-                    <div><span>Total Account Value</span><strong id="metricAccountValue">$2,500.00</strong></div>
-                    <div><span>Buying Power</span><strong id="accountBuyingPower">$2,500.00</strong></div>
+                    <div><span>Total Account Equity</span><strong id="metricAccountValue">$2,500.00</strong></div>
+                    <div><span id="accountBuyingPowerLabel">Buying Power</span><strong id="accountBuyingPower">$2,500.00</strong></div>
                   </div>
                 </section>
 
@@ -309,7 +311,7 @@
 
                 <div class="order-input-grid">
                   <label class="number-field entry-field"><span id="entryFieldLabel">Market Price</span><span class="input-shell">$<input type="number" name="entry" value="48.20" min="1" step="0.01" inputmode="decimal" readonly></span></label>
-                  <label class="number-field" data-position-method="units"><span>Quantity</span><span class="input-shell"><input id="positionUnits" type="number" name="positionUnits" value="16.60" min="0" step="0.01" inputmode="decimal"></span></label>
+                  <label class="number-field" data-position-method="units"><span id="positionUnitsLabel">Quantity</span><span class="input-shell"><input id="positionUnits" type="number" name="positionUnits" value="16.60" min="0" step="0.01" inputmode="decimal"></span></label>
                   <label class="number-field" data-position-method="amount"><span>Dollar Amount</span><span class="input-shell">$<input id="positionAmount" type="number" name="positionAmount" value="800.00" min="0" step="0.01" inputmode="decimal"></span></label>
                   <label class="number-field"><span>Stop Loss</span><span class="input-shell">$<input type="number" name="stop" value="46.90" min="1" step="0.01" inputmode="decimal"></span></label>
                   <label class="number-field"><span>Take Profit</span><span class="input-shell">$<input type="number" name="target" value="52.10" min="1" step="0.01" inputmode="decimal"></span></label>
@@ -321,12 +323,14 @@
                 <input id="accountRiskInput" type="hidden" name="risk" value="0.9">
 
                 <div class="order-preview-grid" aria-live="polite">
-                  <div><span>Estimated Cost</span><strong id="estimatedCost">$800.00</strong></div>
-                  <div><span>Available Cash After</span><strong id="metricAvailableCash">$1,700.00</strong></div>
-                  <div><span>Position Size</span><strong id="metricPositionUnits">16.60 units</strong></div>
-                  <div><span>Position Value</span><strong id="metricPositionValue">$800.00</strong></div>
-                  <div><span>Buying Power After</span><strong id="metricBuyingPowerAfter">$1,700.00</strong></div>
+                  <div><span id="estimatedCostLabel">Estimated Cost</span><strong id="estimatedCost">$800.00</strong></div>
+                  <div><span id="metricAvailableCashLabel">Available Cash After</span><strong id="metricAvailableCash">$1,700.00</strong></div>
+                  <div><span id="metricPositionUnitsLabel">Quantity</span><strong id="metricPositionUnits">16.60 units</strong></div>
+                  <div><span id="metricPositionValueLabel">Position Value</span><strong id="metricPositionValue">$800.00</strong></div>
+                  <div><span id="metricBuyingPowerAfterLabel">Buying Power After</span><strong id="metricBuyingPowerAfter">$1,700.00</strong></div>
                 </div>
+
+                <p class="short-risk-note" id="shortRiskNote" hidden>Short losses increase as price rises.</p>
 
                 <div class="capital-metrics order-risk-metrics" aria-live="polite">
                   <div><span>Dollars at risk</span><strong id="metricDollarsRisk">$21.58</strong></div>

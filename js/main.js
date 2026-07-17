@@ -426,9 +426,11 @@ let launchChartAnimationFrame = null;
 let practiceCapital = STARTING_PRACTICE_CAPITAL;
 let practiceAccount = {
   cash: STARTING_PRACTICE_CAPITAL,
+  positionSide: "Flat",
   positionUnits: 0,
   positionEntry: 0,
   positionMark: 0,
+  reservedShortProceeds: 0,
   unrealizedPL: 0,
   realizedPL: 0
 };
@@ -452,6 +454,7 @@ let chartResizeObserver = null;
 let analysisAdvanceTimer = null;
 let actionAdvanceTimer = null;
 let lastPositionSource = "amount";
+let lastConfiguredTradeIntent = null;
 let lastRiskLevel = null;
 let capitalCommitted = false;
 let commitmentSequenceId = 0;
@@ -461,6 +464,7 @@ let humorAnimationsEnabled = true;
 let fallingKnifeMistake = false;
 let lastCoachPersonalityLine = "";
 let automatedReviewToken = 0;
+let inlineCoachPlacement = null;
 const metricAnimations = new WeakMap();
 const sessionResults = new Map();
 
@@ -570,6 +574,49 @@ function drawGrid(context, width, top, priceHeight, left, right) {
   context.restore();
 }
 
+function candleIndexRange(start, end) {
+  const first = Math.max(0, Math.min(start, end));
+  const last = Math.min(candles.length - 1, Math.max(start, end));
+  return Array.from({ length: last - first + 1 }, (_, offset) => first + offset);
+}
+
+function teachingCandleSelection() {
+  const focus = chartTeachingFocus;
+  if (!focus || chartTeachingIntensity <= 0 || guidedReviewPhase !== "guidedTeaching" || focus === "outcome") {
+    return { active: false, candleIndexes: new Set(), volumeIndexes: new Set() };
+  }
+  const annotation = activeScenario.annotation;
+  let candleIndexes = [];
+  let volumeIndexes = [];
+  if (focus === "trend" && annotation.trend?.points?.length) {
+    const indexes = annotation.trend.points.map((point) => point.index);
+    candleIndexes = candleIndexRange(Math.min(...indexes), Math.max(...indexes));
+  } else if (focus === "pattern" && annotation.pattern?.polygon?.length) {
+    const indexes = annotation.pattern.polygon.map((point) => point.index);
+    candleIndexes = candleIndexRange(Math.min(...indexes), Math.max(...indexes));
+  } else if ((focus === "support" || focus === "resistance") && annotation[focus]) {
+    const level = annotation[focus];
+    const priceSpan = Math.max(0.12, (lastChartGeometry?.maxPrice - lastChartGeometry?.minPrice || 4) * 0.035);
+    candleIndexes = candleIndexRange(level.start, level.end).filter((index) => {
+      const evidencePrice = focus === "support" ? candles[index].low : candles[index].high;
+      return Math.abs(evidencePrice - level.price) <= priceSpan;
+    });
+    if (candleIndexes.length === 0) candleIndexes = candleIndexRange(level.start, level.end);
+  } else if (focus === "breakout" && annotation.breakout) {
+    candleIndexes = candleIndexRange(annotation.breakout.index, annotation.breakout.index + 2);
+  } else if (focus === "volume") {
+    volumeIndexes = [...(annotation.volume?.indexes || [])];
+    candleIndexes = [...new Set([annotation.breakout?.index, ...volumeIndexes].filter(Number.isFinite))];
+  } else if (focus === "entry" && annotation.breakout) {
+    candleIndexes = candleIndexRange(annotation.breakout.index, annotation.breakout.index + 1);
+  }
+  return {
+    active: true,
+    candleIndexes: new Set(candleIndexes),
+    volumeIndexes: new Set(volumeIndexes)
+  };
+}
+
 function drawTradeChart() {
   if (!tradeChart || tradeChart.offsetParent === null) return;
   const { context, width, height } = setupCanvas(tradeChart);
@@ -596,6 +643,7 @@ function drawTradeChart() {
   const candleWidth = Math.max(4, Math.min(12, slot * (replaySpacingActive ? 0.62 : 0.56)));
   const maxVolume = Math.max(...candles.map((item) => item.volume));
   const plotRight = width - right;
+  const teachingSelection = teachingCandleSelection();
 
   context.fillStyle = "#f4f6f5";
   context.fillRect(plotRight, 0, right, height);
@@ -633,7 +681,12 @@ function drawTradeChart() {
     const index = renderStart + localIndex;
     const x = left + slot * (index - firstIndex + chartScrollProgress) + slot / 2;
     const up = candle.close >= candle.open;
-    const color = up ? "#57f0aa" : "#ff7d7d";
+    const isTeachingCandle = teachingSelection.candleIndexes.has(index);
+    const isTeachingVolume = teachingSelection.volumeIndexes.has(index);
+    const candleAlpha = teachingSelection.active ? (isTeachingCandle ? 1 : 0.38) : 1;
+    const color = up
+      ? (isTeachingCandle ? "#71ffc1" : "#57f0aa")
+      : (isTeachingCandle ? "#ff979d" : "#ff7d7d");
     const highY = priceScale(candle.high, minPrice, maxPrice, top, priceHeight);
     const lowY = priceScale(candle.low, minPrice, maxPrice, top, priceHeight);
     const openY = priceScale(candle.open, minPrice, maxPrice, top, priceHeight);
@@ -641,18 +694,36 @@ function drawTradeChart() {
     const bodyTop = Math.min(openY, closeY);
     const bodyHeight = Math.max(2, Math.abs(closeY - openY));
 
+    context.save();
+    context.globalAlpha = candleAlpha;
     context.strokeStyle = color;
-    context.lineWidth = 1.35;
+    context.lineWidth = isTeachingCandle ? 1.8 : 1.35;
+    if (isTeachingCandle) {
+      context.shadowColor = color;
+      context.shadowBlur = 7 * chartTeachingIntensity;
+    }
     context.beginPath();
     context.moveTo(x, highY);
     context.lineTo(x, lowY);
     context.stroke();
     context.fillStyle = color;
     context.fillRect(x - candleWidth / 2, bodyTop, candleWidth, bodyHeight);
+    context.restore();
 
     const volumeTop = volumeBase - (candle.volume / maxVolume) * volumeHeight;
-    context.fillStyle = up ? "rgba(78, 227, 160, 0.28)" : "rgba(242, 118, 118, 0.28)";
+    context.save();
+    context.globalAlpha = teachingSelection.active
+      ? (chartTeachingFocus === "volume" ? (isTeachingVolume ? 1 : 0.28) : 0.42)
+      : 1;
+    context.fillStyle = isTeachingVolume
+      ? (up ? "rgba(87, 240, 170, 0.82)" : "rgba(255, 125, 125, 0.82)")
+      : (up ? "rgba(78, 227, 160, 0.28)" : "rgba(242, 118, 118, 0.28)");
+    if (isTeachingVolume) {
+      context.shadowColor = up ? "#57f0aa" : "#ff7d7d";
+      context.shadowBlur = 7 * chartTeachingIntensity;
+    }
     context.fillRect(x - candleWidth / 2, volumeTop, candleWidth, volumeBase - volumeTop);
+    context.restore();
   });
   context.restore();
 
@@ -689,7 +760,9 @@ function drawTradeChart() {
   if (crosshair.active) drawCrosshair(context, geometry);
   drawTeachingSpotlight(context, geometry);
   drawCoachAttention(context, geometry);
-  if (xrayProgress > 0) drawXray(context, geometry);
+  placeInlineCoaching(geometry);
+  drawInlineCoachLeader(context, geometry);
+  if (xrayProgress > 0 && guidedReviewPhase !== "guidedTeaching" && guidedReviewPhase !== "completedPoster") drawXray(context, geometry);
   drawUserGuides(context, width, height);
   updateOhlcvReadout(crosshair.active ? crosshair.candleIndex : shownCount - 1, crosshair.active);
 }
@@ -697,7 +770,7 @@ function drawTradeChart() {
 function drawTradePlanOverlay(context, geometry) {
   const action = getValue("action");
   const visible = ["plan", "review", "commit", "replay"].includes(currentStep) || capitalCommitted;
-  if (!visible || xrayProgress > 0 || chartTeachingFocus || studyModeActive || (action !== "Buy" && action !== "Sell")) return;
+  if (!visible || guidedReviewPhase === "guidedTeaching" || xrayProgress > 0 || chartTeachingFocus || studyModeActive || (action !== "Buy" && action !== "Sell")) return;
 
   const plan = getTradePlan();
   if (!plan.valid) return;
@@ -1009,15 +1082,29 @@ function teachingFocusBounds(geometry) {
     points = (annotation.volume?.indexes || []).flatMap((index) => {
       const candlePoint = pointFor(index, candles[index].close, geometry);
       const volumeTop = geometry.volumeBase - (candles[index].volume / geometry.maxVolume) * geometry.volumeHeight;
-      return [{ x: candlePoint.x, y: volumeTop }, { x: candlePoint.x, y: geometry.volumeBase }];
+      return [
+        { x: candlePoint.x, y: volumeTop },
+        { x: candlePoint.x, y: geometry.volumeBase },
+        pointFor(index, candles[index].high, geometry),
+        pointFor(index, candles[index].low, geometry)
+      ];
     });
   }
-  if (focus === "invalidation") {
-    const stopY = priceScale(activeScenario.plan.stop, geometry.minPrice, geometry.maxPrice, geometry.top, geometry.priceHeight);
+  if (focus === "entry") {
+    const entry = getTradePlan().entry || activeScenario.plan.entry;
+    const endIndex = Math.min(candles.length - 1, (annotation.breakout?.index || visibleCloses.length - 1) + 2);
     points = [
-      pointFor(Math.max(0, visibleCloses.length - 12), activeScenario.plan.stop, geometry),
-      pointFor(visibleCloses.length - 1, activeScenario.plan.stop, geometry),
-      { x: pointFor(visibleCloses.length - 1, activeScenario.plan.stop, geometry).x, y: stopY }
+      pointFor(Math.max(0, endIndex - 8), entry, geometry),
+      pointFor(endIndex, entry, geometry)
+    ];
+  }
+  if (focus === "invalidation") {
+    const stop = getTradePlan().stop || activeScenario.plan.stop;
+    const stopY = priceScale(stop, geometry.minPrice, geometry.maxPrice, geometry.top, geometry.priceHeight);
+    points = [
+      pointFor(Math.max(0, visibleCloses.length - 12), stop, geometry),
+      pointFor(visibleCloses.length - 1, stop, geometry),
+      { x: pointFor(visibleCloses.length - 1, stop, geometry).x, y: stopY }
     ];
   }
   if (points.length === 0) return null;
@@ -1034,20 +1121,99 @@ function teachingFocusBounds(geometry) {
 }
 
 function drawTeachingSpotlight(context, geometry) {
-  if (!chartTeachingFocus || chartTeachingIntensity <= 0 || guidedReviewPhase !== "guidedTeaching") return;
-  const bounds = teachingFocusBounds(geometry);
-  if (!bounds) return;
+  // Candle and volume emphasis is applied while each bar is rendered. Keeping this
+  // layer empty prevents a region-shaped spotlight from obscuring chart context.
+}
+
+function rectangleOverlap(first, second) {
+  const width = Math.max(0, Math.min(first.right, second.right) - Math.max(first.left, second.left));
+  const height = Math.max(0, Math.min(first.bottom, second.bottom) - Math.max(first.top, second.top));
+  return width * height;
+}
+
+function placeInlineCoaching(geometry) {
+  if (revealWalkthrough.hidden || guidedReviewPhase !== "guidedTeaching" || !chartTeachingFocus) {
+    inlineCoachPlacement = null;
+    return;
+  }
+  const evidence = teachingFocusBounds(geometry);
+  if (!evidence) {
+    inlineCoachPlacement = null;
+    return;
+  }
   const plotRight = geometry.width - geometry.right;
-  const opacity = 0.5 * Math.max(0, Math.min(1, chartTeachingIntensity));
+  const availableWidth = plotRight - geometry.left;
+  const width = Math.min(310, Math.max(210, availableWidth * 0.29));
+  const estimatedLines = Math.max(1, Math.ceil((revealBody.textContent || "").length / 29));
+  const height = Math.min(104, 18 + estimatedLines * 27);
+  const safe = {
+    left: geometry.left + 10,
+    right: plotRight - 10,
+    top: geometry.top + 8,
+    bottom: geometry.volumePanelTop - 10
+  };
+  const gap = 22;
+  const centerX = (evidence.left + evidence.right) / 2;
+  const centerY = (evidence.top + evidence.bottom) / 2;
+  const rawCandidates = [
+    { left: evidence.right + gap, top: centerY - height / 2 },
+    { left: centerX - width / 2, top: evidence.top - height - gap },
+    { left: centerX - width / 2, top: evidence.bottom + gap },
+    { left: evidence.left - width - gap, top: centerY - height / 2 }
+  ];
+  const clampCandidate = (candidate) => {
+    const left = Math.max(safe.left, Math.min(safe.right - width, candidate.left));
+    const top = Math.max(safe.top, Math.min(safe.bottom - height, candidate.top));
+    return { left, top, right: left + width, bottom: top + height };
+  };
+  const candleRects = candles.slice(0, geometry.shownCount).map((candle, index) => {
+    const pointHigh = pointFor(index, candle.high, geometry);
+    const pointLow = pointFor(index, candle.low, geometry);
+    return {
+      left: pointHigh.x - geometry.candleWidth,
+      right: pointHigh.x + geometry.candleWidth,
+      top: Math.min(pointHigh.y, pointLow.y) - 4,
+      bottom: Math.max(pointHigh.y, pointLow.y) + 4
+    };
+  });
+  const candidates = rawCandidates.map(clampCandidate);
+  const scored = candidates.map((candidate, index) => {
+    const evidenceOverlap = rectangleOverlap(candidate, evidence);
+    const candleOverlap = candleRects.reduce((total, candleRect) => total + rectangleOverlap(candidate, candleRect), 0);
+    return { candidate, score: evidenceOverlap * 80 + candleOverlap * 7 + index * 90 };
+  }).sort((first, second) => first.score - second.score);
+  const selected = scored[0].candidate;
+  const target = { x: centerX, y: centerY };
+  const from = {
+    x: Math.max(selected.left, Math.min(selected.right, target.x)),
+    y: Math.max(selected.top, Math.min(selected.bottom, target.y))
+  };
+  revealWalkthrough.style.left = `${selected.left}px`;
+  revealWalkthrough.style.top = `${selected.top}px`;
+  revealWalkthrough.style.bottom = "auto";
+  revealWalkthrough.style.width = `${width}px`;
+  inlineCoachPlacement = { from, target };
+}
+
+function drawInlineCoachLeader(context, geometry) {
+  if (!inlineCoachPlacement || chartTeachingIntensity <= 0) return;
+  const { from, target } = inlineCoachPlacement;
+  const distance = Math.hypot(target.x - from.x, target.y - from.y);
+  if (distance < 14) return;
   context.save();
-  context.fillStyle = `rgba(1, 7, 7, ${opacity})`;
-  context.fillRect(geometry.left, geometry.top, plotRight - geometry.left, bounds.top - geometry.top);
-  context.fillRect(geometry.left, bounds.bottom, plotRight - geometry.left, geometry.volumeBase - bounds.bottom);
-  context.fillRect(geometry.left, bounds.top, bounds.left - geometry.left, bounds.bottom - bounds.top);
-  context.fillRect(bounds.right, bounds.top, plotRight - bounds.right, bounds.bottom - bounds.top);
-  context.strokeStyle = `rgba(205, 225, 216, ${0.14 * chartTeachingIntensity})`;
-  context.lineWidth = 1;
-  context.strokeRect(bounds.left, bounds.top, bounds.right - bounds.left, bounds.bottom - bounds.top);
+  context.beginPath();
+  context.rect(geometry.left, geometry.top, geometry.width - geometry.right - geometry.left, geometry.volumeBase - geometry.top);
+  context.clip();
+  context.strokeStyle = `rgba(205, 225, 216, ${0.52 * chartTeachingIntensity})`;
+  context.lineWidth = 1.1;
+  context.beginPath();
+  context.moveTo(from.x, from.y);
+  context.lineTo(target.x, target.y);
+  context.stroke();
+  context.fillStyle = `rgba(235, 242, 237, ${0.8 * chartTeachingIntensity})`;
+  context.beginPath();
+  context.arc(target.x, target.y, 2.2, 0, Math.PI * 2);
+  context.fill();
   context.restore();
 }
 
@@ -1071,7 +1237,7 @@ function drawCoachAttention(context, geometry) {
   context.lineCap = "round";
   context.lineJoin = "round";
 
-  if (focus === "trend" && annotation.trend?.points?.length) {
+  if (focus === "trend" && guidedReviewPhase !== "guidedTeaching" && annotation.trend?.points?.length) {
     const points = annotation.trend.points.map((point) => annotationPoint(point, geometry));
     context.strokeStyle = amber;
     context.lineWidth = 2.4;
@@ -1095,23 +1261,18 @@ function drawCoachAttention(context, geometry) {
     const color = focus === "support" ? green : amber;
     const start = pointFor(level.start, level.price, geometry);
     const end = pointFor(level.end, level.price, geometry);
-    context.fillStyle = focus === "support" ? `rgba(87, 240, 170, ${0.13 * intensity})` : `rgba(240, 190, 103, ${0.11 * intensity})`;
-    context.fillRect(start.x - geometry.slot * 0.5, start.y - 9, end.x - start.x + geometry.slot, 18);
     context.strokeStyle = color;
-    context.lineWidth = 2;
-    context.shadowColor = color;
-    context.shadowBlur = 9;
+    context.lineWidth = 1.6;
     context.setLineDash(focus === "resistance" ? [7, 5] : []);
     context.beginPath();
     context.moveTo(start.x - geometry.slot * 0.5, start.y);
     context.lineTo(end.x + geometry.slot * 0.5, end.y);
     context.stroke();
     context.setLineDash([]);
-    context.shadowBlur = 0;
     if (showLabels) drawAttentionLabel(context, level.label, focus === "support" ? start.x : end.x - 122, focus === "support" ? start.y + 15 : end.y - 28, geometry, color);
   }
 
-  if (focus === "pattern" && annotation.pattern?.polygon?.length) {
+  if (focus === "pattern" && guidedReviewPhase !== "guidedTeaching" && annotation.pattern?.polygon?.length) {
     const points = annotation.pattern.polygon.map((point) => annotationPoint(point, geometry));
     context.fillStyle = `rgba(139, 181, 255, ${0.12 * intensity})`;
     context.strokeStyle = blue;
@@ -1124,7 +1285,7 @@ function drawCoachAttention(context, geometry) {
     if (showLabels) drawAttentionLabel(context, annotation.pattern.label, points[0].x + 14, points[0].y - 28, geometry, blue);
   }
 
-  if (focus === "breakout" && annotation.breakout) {
+  if (focus === "breakout" && guidedReviewPhase !== "guidedTeaching" && annotation.breakout) {
     const index = annotation.breakout.index;
     const color = annotationToneColor(annotation.breakout.tone, green);
     const close = pointFor(index, candles[index].close, geometry);
@@ -1138,7 +1299,7 @@ function drawCoachAttention(context, geometry) {
     if (showLabels) drawAttentionLabel(context, annotation.breakout.label, close.x + 12, close.y - 42, geometry, color);
   }
 
-  if (focus === "volume" && annotation.volume?.indexes?.length) {
+  if (focus === "volume" && guidedReviewPhase !== "guidedTeaching" && annotation.volume?.indexes?.length) {
     const color = annotationToneColor(annotation.volume.tone, blue);
     const points = annotation.volume.indexes.map((index) => {
       const candlePoint = pointFor(index, candles[index].close, geometry);
@@ -1154,10 +1315,25 @@ function drawCoachAttention(context, geometry) {
     if (showLabels) drawAttentionLabel(context, annotation.volume.label, labelPoint.x + 14, labelPoint.y + 5, geometry, color);
   }
 
+  if (focus === "entry") {
+    const entry = getTradePlan().entry || activeScenario.plan.entry;
+    const y = priceScale(entry, geometry.minPrice, geometry.maxPrice, geometry.top, geometry.priceHeight);
+    const endIndex = Math.min(candles.length - 1, (annotation.breakout?.index || visibleCloses.length - 1) + 2);
+    const startX = pointFor(Math.max(0, endIndex - 8), entry, geometry).x;
+    const endX = pointFor(endIndex, entry, geometry).x;
+    context.strokeStyle = "#57f0aa";
+    context.lineWidth = 1.6;
+    context.beginPath();
+    context.moveTo(startX, y);
+    context.lineTo(endX, y);
+    context.stroke();
+  }
+
   if (focus === "invalidation") {
-    const y = priceScale(activeScenario.plan.stop, geometry.minPrice, geometry.maxPrice, geometry.top, geometry.priceHeight);
-    const startX = pointFor(Math.max(0, visibleCloses.length - 12), activeScenario.plan.stop, geometry).x;
-    const endX = pointFor(visibleCloses.length - 1, activeScenario.plan.stop, geometry).x;
+    const stop = getTradePlan().stop || activeScenario.plan.stop;
+    const y = priceScale(stop, geometry.minPrice, geometry.maxPrice, geometry.top, geometry.priceHeight);
+    const startX = pointFor(Math.max(0, visibleCloses.length - 12), stop, geometry).x;
+    const endX = pointFor(visibleCloses.length - 1, stop, geometry).x;
     context.strokeStyle = "#ff8e96";
     context.lineWidth = 2;
     context.setLineDash([6, 5]);
@@ -1574,7 +1750,12 @@ function snapshotDecision() {
   data.forEach((value, key) => {
     if (key !== "patterns") values[key] = value;
   });
-  return { values, patterns: data.getAll("patterns"), accountBalance: practiceCapital };
+  return {
+    values,
+    patterns: data.getAll("patterns"),
+    accountBalance: currentPracticeAccount().totalValue,
+    tradeIntent: tradeIntentFor(values.action).id
+  };
 }
 
 function getValue(name) {
@@ -1585,6 +1766,42 @@ function getValue(name) {
 function getPatterns() {
   if (lockedDecision) return [...lockedDecision.patterns];
   return new FormData(decisionForm).getAll("patterns");
+}
+
+function practicePositionState(account = practiceAccount) {
+  if (!Number.isFinite(account.positionUnits) || account.positionUnits <= 0.0001) return "Flat";
+  return account.positionSide === "Short" ? "Short" : "Long";
+}
+
+function tradeIntentFor(action, account = practiceAccount) {
+  const state = practicePositionState(account);
+  const intents = {
+    openLong: { id: "openLong", label: "Open Long", maxLabel: "Max Buy", quantityLabel: "Long Quantity", submitLabel: "Open Long" },
+    openShort: { id: "openShort", label: "Open Short", maxLabel: "Max Short", quantityLabel: "Short Quantity", submitLabel: "Open Short" },
+    addLong: { id: "addLong", label: "Add Long", maxLabel: "Max Buy", quantityLabel: "Long Quantity", submitLabel: "Add Long" },
+    addShort: { id: "addShort", label: "Add Short", maxLabel: "Max Short", quantityLabel: "Short Quantity", submitLabel: "Add Short" },
+    closeLong: { id: "closeLong", label: "Close Long", maxLabel: "Max Sell", quantityLabel: "Sell Quantity", submitLabel: "Close Long" },
+    coverShort: { id: "coverShort", label: "Cover Short", maxLabel: "Max Cover", quantityLabel: "Cover Quantity", submitLabel: "Cover Short" },
+    noTrade: { id: "noTrade", label: action || "Order", maxLabel: "Max", quantityLabel: "Quantity", submitLabel: "Submit Decision" }
+  };
+  if (action === "Buy") {
+    if (state === "Short") return intents.coverShort;
+    return state === "Long" ? intents.addLong : intents.openLong;
+  }
+  if (action === "Sell") {
+    if (state === "Long") return intents.closeLong;
+    return state === "Short" ? intents.addShort : intents.openShort;
+  }
+  return intents.noTrade;
+}
+
+function decisionTradeIntent() {
+  const id = lockedDecision?.tradeIntent;
+  return id || tradeIntentFor(getValue("action")).id;
+}
+
+function isShortTradeIntent(intent = decisionTradeIntent()) {
+  return intent === "openShort" || intent === "addShort";
 }
 
 function setStep(step) {
@@ -1656,30 +1873,42 @@ function validatePlan() {
   }
   const accountError = orderValidationMessage(action, positionAmount, positionUnits);
   if (accountError) return showError("planError", accountError);
-  if (action === "Buy" && !(stop < entry && target > entry)) {
-    return showError("planError", "For a buy, place the stop below entry and the target above entry.");
-  }
-  if (action === "Sell" && !(stop > entry && target < entry)) {
-    return showError("planError", "For a sell, place the stop above entry and the target below entry.");
-  }
+  const directionError = tradeDirectionValidationMessage(action, entry, stop, target);
+  if (directionError) return showError("planError", directionError);
   return true;
 }
 
 function updatePlanMode() {
   const action = getValue("action");
   const isTrade = action === "Buy" || action === "Sell";
+  const intent = tradeIntentFor(action);
   const orderSide = document.querySelector("#orderSide");
   const submitOrder = document.querySelector("#submitOrder");
   document.querySelector("#tradeFields").hidden = !isTrade;
   document.querySelector("#reasonField").hidden = true;
   document.querySelector("#lockDecision").textContent = isTrade ? "COMMIT CAPITAL" : "COMMIT DECISION";
-  orderSide.textContent = action || "Order";
+  orderSide.textContent = isTrade ? intent.label : (action || "Order");
   orderSide.dataset.side = String(action || "").toLowerCase();
-  submitOrder.textContent = isTrade ? `Place ${action} Order` : "Submit Decision";
-  document.querySelector("#maxOrder").textContent = action === "Sell" ? "Max Sell" : "Max Buy";
+  submitOrder.textContent = isTrade ? intent.submitLabel : "Submit Decision";
+  document.querySelector("#maxOrder").textContent = intent.maxLabel;
+  document.querySelector("#positionUnitsLabel").textContent = intent.quantityLabel;
+  document.querySelector("#shortRiskNote").hidden = !isShortTradeIntent(intent.id);
   document.querySelector("#planIntro").textContent = isTrade
     ? "Set the execution and define where your thesis is invalidated."
     : "Name the evidence that would change this decision.";
+  if (isTrade && intent.id !== lastConfiguredTradeIntent) {
+    const entry = Number(document.querySelector('input[name="entry"]').value) || activeScenario.plan.entry;
+    const stopInput = document.querySelector('input[name="stop"]');
+    const targetInput = document.querySelector('input[name="target"]');
+    if (intent.id === "openShort" || intent.id === "addShort") {
+      stopInput.value = (entry + Math.abs(entry - activeScenario.plan.stop)).toFixed(2);
+      targetInput.value = Math.max(0.01, entry - Math.abs(activeScenario.plan.target - entry)).toFixed(2);
+    } else if (intent.id === "openLong" || intent.id === "addLong") {
+      stopInput.value = activeScenario.plan.stop.toFixed(2);
+      targetInput.value = activeScenario.plan.target.toFixed(2);
+    }
+    lastConfiguredTradeIntent = intent.id;
+  }
   if (isTrade) syncPositionInputs(lastPositionSource, false);
   else drawTradeChart();
 }
@@ -1703,6 +1932,7 @@ function riskLevelFor(percent) {
 
 function getTradePlan() {
   const account = currentPracticeAccount();
+  const intent = tradeIntentFor(getValue("action"));
   const accountBalance = lockedDecision?.accountBalance ?? account.totalValue;
   const entry = Number(getValue("entry"));
   const stop = Number(getValue("stop"));
@@ -1718,6 +1948,23 @@ function getTradePlan() {
   const ratio = dollarsRisk > 0 ? potentialGain / dollarsRisk : 0;
   const exposurePercent = accountBalance > 0 ? (positionValue / accountBalance) * 100 : 0;
   const accountRiskPercent = accountBalance > 0 ? (dollarsRisk / accountBalance) * 100 : 0;
+  let remainingCash = account.cash;
+  let buyingPowerAfter = account.buyingPower;
+  if (intent.id === "openLong" || intent.id === "addLong") {
+    remainingCash = account.cash - positionValue;
+    buyingPowerAfter = remainingCash;
+  } else if (intent.id === "openShort" || intent.id === "addShort") {
+    buyingPowerAfter = account.shortBuyingPower - positionValue;
+  } else if (intent.id === "closeLong") {
+    remainingCash = account.cash + positionValue;
+    buyingPowerAfter = remainingCash;
+  } else if (intent.id === "coverShort") {
+    const coverUnits = Math.min(units, practiceAccount.positionUnits);
+    const realizedOnCover = (practiceAccount.positionEntry - entry) * coverUnits;
+    const remainingShortValue = Math.max(0, account.positionValue - positionValue);
+    remainingCash = account.cash + realizedOnCover;
+    buyingPowerAfter = Math.max(0, account.totalValue - remainingShortValue);
+  }
   return {
     entry,
     stop,
@@ -1732,7 +1979,9 @@ function getTradePlan() {
     accountBalance,
     exposurePercent,
     accountRiskPercent,
-    remainingCash: getValue("action") === "Sell" ? account.cash + positionValue : account.cash - positionValue,
+    intent,
+    remainingCash,
+    buyingPowerAfter,
     riskLevel: riskLevelFor(accountRiskPercent),
     valid: [entry, stop, target, units, positionValue, dollarsRisk, potentialGain, ratio]
       .every((value) => Number.isFinite(value) && value > 0)
@@ -1770,14 +2019,26 @@ function renderTradePlanMetrics(announceRisk = false) {
   const plan = getTradePlan();
   const account = currentPracticeAccount();
   const action = getValue("action");
-  const positionAfter = action === "Sell"
+  const intent = plan.intent || tradeIntentFor(action);
+  const reducing = intent.id === "closeLong" || intent.id === "coverShort";
+  const positionAfter = reducing
     ? Math.max(0, account.positionValue - (plan.positionValue || 0))
     : account.positionValue + (plan.positionValue || 0);
   renderPracticeAccountMetrics();
-  animateMetric(document.querySelector("#metricAvailableCash"), plan.remainingCash || 0);
+  const openingShort = intent.id === "openShort" || intent.id === "addShort";
+  const coveringShort = intent.id === "coverShort";
+  const closingLong = intent.id === "closeLong";
+  document.querySelector("#estimatedCostLabel").textContent = openingShort
+    ? "Estimated Entry Price"
+    : closingLong ? "Estimated Proceeds" : coveringShort ? "Estimated Cover Cost" : "Estimated Cost";
+  document.querySelector("#metricAvailableCashLabel").textContent = openingShort ? "Available Buying Power" : "Available Cash After";
+  document.querySelector("#metricPositionUnitsLabel").textContent = intent.quantityLabel;
+  document.querySelector("#metricPositionValueLabel").textContent = reducing ? "Remaining Position Value" : "Estimated Position Value";
+  document.querySelector("#metricBuyingPowerAfterLabel").textContent = (openingShort || coveringShort) ? "Short Buying Power After" : "Buying Power After";
+  animateMetric(document.querySelector("#metricAvailableCash"), openingShort ? account.shortBuyingPower : (plan.remainingCash || 0));
   animateMetric(document.querySelector("#metricPositionValue"), positionAfter);
-  animateMetric(document.querySelector("#metricBuyingPowerAfter"), plan.remainingCash || 0);
-  animateMetric(document.querySelector("#estimatedCost"), plan.positionValue || 0);
+  animateMetric(document.querySelector("#metricBuyingPowerAfter"), Math.max(0, plan.buyingPowerAfter || 0));
+  animateMetric(document.querySelector("#estimatedCost"), openingShort ? plan.entry : (plan.positionValue || 0));
   document.querySelector("#metricPositionUnits").textContent = `${(plan.units || 0).toFixed(2)} units`;
   document.querySelector("#metricDollarsRisk").textContent = currencyFormatter.format(plan.dollarsRisk || 0);
   document.querySelector("#metricMaxLoss").textContent = currencyFormatter.format(plan.dollarsRisk || 0);
@@ -1792,24 +2053,40 @@ function renderTradePlanMetrics(announceRisk = false) {
   document.querySelector("#riskNote").textContent = `You are risking ${(plan.accountRiskPercent || 0).toFixed(1)}% of the practice account on one idea.`;
   if (announceRisk && lastRiskLevel && lastRiskLevel !== level.id) playRiskLevelSound(level.id);
   lastRiskLevel = level.id;
-  const validationMessage = orderValidationMessage(action, plan.positionValue, plan.units);
+  const validationMessage = orderValidationMessage(action, plan.positionValue, plan.units)
+    || tradeDirectionValidationMessage(action, plan.entry, plan.stop, plan.target);
   document.querySelector("#planError").textContent = validationMessage;
   document.querySelector("#submitOrder").disabled = Boolean(validationMessage) || !plan.valid;
   drawTradeChart();
 }
 
 function currentPracticeAccount(markPrice = practiceAccount.positionMark || practiceAccount.positionEntry) {
-  const positionValue = practiceAccount.positionUnits * (markPrice || 0);
-  const unrealizedPL = practiceAccount.positionUnits > 0
-    ? positionValue - practiceAccount.positionUnits * practiceAccount.positionEntry
+  const state = practicePositionState();
+  const safeMark = Number.isFinite(markPrice) && markPrice > 0 ? markPrice : (practiceAccount.positionEntry || 0);
+  const positionValue = state === "Flat" ? 0 : practiceAccount.positionUnits * safeMark;
+  const entryValue = practiceAccount.positionUnits * practiceAccount.positionEntry;
+  const unrealizedPL = state === "Long"
+    ? positionValue - entryValue
+    : state === "Short" ? entryValue - positionValue : 0;
+  const reservedShortProceeds = state === "Short"
+    ? Math.max(0, Number(practiceAccount.reservedShortProceeds) || entryValue)
     : 0;
+  const totalValue = state === "Long"
+    ? practiceAccount.cash + positionValue
+    : state === "Short"
+      ? practiceAccount.cash + reservedShortProceeds - positionValue
+      : practiceAccount.cash;
+  const shortBuyingPower = Math.max(0, totalValue - (state === "Short" ? positionValue : 0));
   return {
-    cash: practiceAccount.cash,
+    cash: Number.isFinite(practiceAccount.cash) ? practiceAccount.cash : 0,
+    positionState: state,
     positionValue,
+    reservedShortProceeds,
     unrealizedPL,
-    realizedPL: practiceAccount.realizedPL,
-    totalValue: practiceAccount.cash + positionValue,
-    buyingPower: practiceAccount.cash
+    realizedPL: Number.isFinite(practiceAccount.realizedPL) ? practiceAccount.realizedPL : 0,
+    totalValue: Number.isFinite(totalValue) ? totalValue : 0,
+    shortBuyingPower,
+    buyingPower: state === "Short" ? shortBuyingPower : Math.max(0, practiceAccount.cash)
   };
 }
 
@@ -1845,13 +2122,17 @@ function renderPracticeAccountMetrics(markPrice) {
   const account = currentPracticeAccount();
   practiceCapital = account.totalValue;
   animateMetric(planningAccountBalance, account.cash);
+  animateMetric(document.querySelector("#accountReservedShortProceeds"), account.reservedShortProceeds);
+  document.querySelector("#accountPositionSide").textContent = account.positionState;
+  document.querySelector("#accountPositionValueLabel").textContent = account.positionState === "Short" ? "Short Position Value" : account.positionState === "Long" ? "Long Position Value" : "Position Value";
   animateMetric(document.querySelector("#accountPositionValue"), account.positionValue);
   animateMetric(document.querySelector("#accountUnrealizedPL"), account.unrealizedPL, { signed: true });
   animateMetric(document.querySelector("#accountRealizedPL"), account.realizedPL, { signed: true });
   animateMetric(document.querySelector("#metricAccountValue"), account.totalValue);
   animateMetric(document.querySelector("#accountBuyingPower"), account.buyingPower);
+  document.querySelector("#accountBuyingPowerLabel").textContent = account.positionState === "Short" ? "Short Buying Power" : "Buying Power";
   practiceBalanceDisplay.textContent = currencyFormatter.format(account.totalValue);
-  practiceBalanceChange.textContent = practiceAccount.positionUnits > 0
+  practiceBalanceChange.textContent = account.positionState !== "Flat"
     ? `${account.unrealizedPL >= 0 ? "+" : "-"}${currencyFormatter.format(Math.abs(account.unrealizedPL))} unrealized`
     : "Available account value";
   practiceBalanceWidget.classList.toggle("is-gain", account.unrealizedPL > 0);
@@ -1859,15 +2140,45 @@ function renderPracticeAccountMetrics(markPrice) {
 }
 
 function orderValidationMessage(action, positionAmount, positionUnits) {
-  if (action === "Buy" && positionAmount > practiceAccount.cash + 0.005) return "Order exceeds available buying power.";
-  if (action === "Sell" && positionUnits > practiceAccount.positionUnits + 0.0001) return "Order exceeds your current position.";
+  const account = currentPracticeAccount();
+  const intent = tradeIntentFor(action);
+  if ((intent.id === "openLong" || intent.id === "addLong") && positionAmount > account.buyingPower + 0.005) {
+    return "Order exceeds available buying power.";
+  }
+  if ((intent.id === "openShort" || intent.id === "addShort") && positionAmount > account.shortBuyingPower + 0.005) {
+    return "Order exceeds short buying power.";
+  }
+  if (intent.id === "closeLong" && positionUnits > practiceAccount.positionUnits + 0.0001) {
+    return "Sell quantity exceeds the current Long position. Position reversal is not enabled.";
+  }
+  if (intent.id === "coverShort" && positionUnits > practiceAccount.positionUnits + 0.0001) {
+    return "Cover quantity exceeds the current Short position. Position reversal is not enabled.";
+  }
+  return "";
+}
+
+function tradeDirectionValidationMessage(action, entry, stop, target) {
+  const intent = tradeIntentFor(action).id;
+  if ((intent === "openLong" || intent === "addLong") && !(stop < entry && target > entry)) {
+    return "For a long trade, the stop is normally below entry and the target above entry.";
+  }
+  if ((intent === "openShort" || intent === "addShort") && stop <= entry) {
+    return "For a short trade, the stop is normally above entry.";
+  }
+  if ((intent === "openShort" || intent === "addShort") && target >= entry) {
+    return "For a short trade, the target is normally below entry.";
+  }
   return "";
 }
 
 function applyMaximumOrder() {
   const action = getValue("action");
+  const intent = tradeIntentFor(action);
   const entry = Math.max(0.01, Number(document.querySelector('input[name="entry"]').value) || 0.01);
-  const amount = action === "Sell" ? practiceAccount.positionUnits * entry : practiceAccount.cash;
+  const account = currentPracticeAccount();
+  let amount = account.buyingPower;
+  if (intent.id === "openShort" || intent.id === "addShort") amount = account.shortBuyingPower;
+  if (intent.id === "closeLong" || intent.id === "coverShort") amount = practiceAccount.positionUnits * entry;
   document.querySelector("#positionAmount").value = amount.toFixed(2);
   document.querySelector("#positionUnits").value = (amount / entry).toFixed(2);
   lastPositionSource = "amount";
@@ -2270,52 +2581,86 @@ function stagePracticeOrder() {
     return;
   }
   const plan = getTradePlan();
-  if (action === "Buy") {
+  const intent = plan.intent.id;
+  if (intent === "openLong" || intent === "addLong") {
+    const previousBasis = practiceAccount.positionEntry * practiceAccount.positionUnits;
+    const totalUnits = practiceAccount.positionUnits + plan.units;
     practiceAccount.cash = Math.max(0, practiceAccount.cash - plan.positionValue);
-    practiceAccount.positionUnits += plan.units;
-    practiceAccount.positionEntry = plan.entry;
+    practiceAccount.positionSide = "Long";
+    practiceAccount.positionUnits = totalUnits;
+    practiceAccount.positionEntry = totalUnits > 0 ? (previousBasis + plan.positionValue) / totalUnits : 0;
     practiceAccount.positionMark = plan.entry;
-    practiceAccount.unrealizedPL = 0;
-  } else {
+    practiceAccount.reservedShortProceeds = 0;
+  } else if (intent === "openShort" || intent === "addShort") {
+    const previousBasis = practiceAccount.positionEntry * practiceAccount.positionUnits;
+    const totalUnits = practiceAccount.positionUnits + plan.units;
+    practiceAccount.positionSide = "Short";
+    practiceAccount.positionUnits = totalUnits;
+    practiceAccount.positionEntry = totalUnits > 0 ? (previousBasis + plan.positionValue) / totalUnits : 0;
+    practiceAccount.positionMark = plan.entry;
+    practiceAccount.reservedShortProceeds += plan.positionValue;
+  } else if (intent === "closeLong") {
     const units = Math.min(plan.units, practiceAccount.positionUnits);
     const proceeds = units * plan.entry;
-    const realized = units * (plan.entry - practiceAccount.positionEntry);
     practiceAccount.cash += proceeds;
+    practiceAccount.realizedPL += units * (plan.entry - practiceAccount.positionEntry);
     practiceAccount.positionUnits -= units;
+  } else if (intent === "coverShort") {
+    const units = Math.min(plan.units, practiceAccount.positionUnits);
+    const entryBasisReleased = units * practiceAccount.positionEntry;
+    const realized = units * (practiceAccount.positionEntry - plan.entry);
+    practiceAccount.cash += realized;
     practiceAccount.realizedPL += realized;
-    if (practiceAccount.positionUnits <= 0.0001) {
-      practiceAccount.positionUnits = 0;
-      practiceAccount.positionEntry = 0;
-      practiceAccount.positionMark = 0;
-    }
+    practiceAccount.reservedShortProceeds = Math.max(0, practiceAccount.reservedShortProceeds - entryBasisReleased);
+    practiceAccount.positionUnits -= units;
   }
+  if (practiceAccount.positionUnits <= 0.0001) {
+    practiceAccount.positionSide = "Flat";
+    practiceAccount.positionUnits = 0;
+    practiceAccount.positionEntry = 0;
+    practiceAccount.positionMark = 0;
+    practiceAccount.reservedShortProceeds = 0;
+  }
+  practiceAccount.cash = Math.round(practiceAccount.cash * 100) / 100;
+  practiceAccount.realizedPL = Math.round(practiceAccount.realizedPL * 100) / 100;
   renderPracticeAccountMetrics();
 }
 
 function closePracticePosition(exitPrice) {
-  if (practiceAccount.positionUnits <= 0) return 0;
-  const proceeds = practiceAccount.positionUnits * exitPrice;
-  const costBasis = practiceAccount.positionUnits * practiceAccount.positionEntry;
-  const change = Math.round((proceeds - costBasis) * 100) / 100;
-  practiceAccount.cash = Math.round((practiceAccount.cash + proceeds) * 100) / 100;
+  const state = practicePositionState();
+  if (state === "Flat") return 0;
+  const units = practiceAccount.positionUnits;
+  const change = Math.round((state === "Long"
+    ? (exitPrice - practiceAccount.positionEntry) * units
+    : (practiceAccount.positionEntry - exitPrice) * units) * 100) / 100;
+  if (state === "Long") practiceAccount.cash += units * exitPrice;
+  else practiceAccount.cash += change;
+  practiceAccount.cash = Math.round(practiceAccount.cash * 100) / 100;
   practiceAccount.realizedPL = Math.round((practiceAccount.realizedPL + change) * 100) / 100;
+  practiceAccount.positionSide = "Flat";
   practiceAccount.positionUnits = 0;
   practiceAccount.positionEntry = 0;
   practiceAccount.positionMark = 0;
+  practiceAccount.reservedShortProceeds = 0;
   practiceAccount.unrealizedPL = 0;
   renderPracticeAccountMetrics();
   return change;
 }
 
 function updatePracticePositionDuringReplay(markPrice) {
-  if (practiceAccount.positionUnits <= 0 || practiceOutcomeApplied) return;
+  const intent = decisionTradeIntent();
+  const managesNewExposure = ["openLong", "addLong", "openShort", "addShort"].includes(intent);
+  if (!managesNewExposure || practicePositionState() === "Flat" || practiceOutcomeApplied) return;
   const plan = getTradePlan();
-  if (markPrice <= plan.stop) {
+  const state = practicePositionState();
+  const stopHit = state === "Long" ? markPrice <= plan.stop : markPrice >= plan.stop;
+  const targetHit = state === "Long" ? markPrice >= plan.target : markPrice <= plan.target;
+  if (stopHit) {
     practiceOutcomeApplied = true;
     closePracticePosition(plan.stop);
     return;
   }
-  if (markPrice >= plan.target) {
+  if (targetHit) {
     practiceOutcomeApplied = true;
     closePracticePosition(plan.target);
     return;
@@ -2327,12 +2672,15 @@ function settlePracticeCapital({ animate = true } = {}) {
   if (practiceOutcomeApplied) return 0;
   practiceOutcomeApplied = true;
   const action = getValue("action");
+  const intent = decisionTradeIntent();
   const previousCapital = practiceCapital;
   let change = 0;
-  if (action === "Buy" && practiceAccount.positionUnits > 0) {
+  if (["openLong", "addLong", "openShort", "addShort"].includes(intent) && practicePositionState() !== "Flat") {
     const plan = getTradePlan();
     const finalPrice = futureCloses[futureCloses.length - 1] || plan.entry;
-    change = closePracticePosition(Math.max(plan.stop, Math.min(plan.target, finalPrice)));
+    const lowerBound = Math.min(plan.stop, plan.target);
+    const upperBound = Math.max(plan.stop, plan.target);
+    change = closePracticePosition(Math.max(lowerBound, Math.min(upperBound, finalPrice)));
   } else {
     renderPracticeAccountMetrics();
   }
@@ -2355,7 +2703,7 @@ function buildSummary() {
       ["Account risk", `${plan.accountRiskPercent.toFixed(1)}%`],
       ["Potential gain", currencyFormatter.format(plan.potentialGain)],
       ["Risk / reward", `${plan.ratio.toFixed(1)} : 1`],
-      ["Trade direction", action]
+      ["Trade direction", plan.intent.label]
     ];
   } else {
     items = [
@@ -2512,7 +2860,12 @@ function calculateScores() {
     const ratio = Math.abs(target - entry) / Math.abs(entry - stop);
     const ratioScore = ratio >= 2.5 ? 96 : ratio >= 2 ? 88 : ratio >= 1.5 ? 74 : 50;
     const sizeScore = risk <= 1 ? 96 : risk <= 2 ? 84 : risk <= 3 ? 68 : 46;
-    const directionValid = action === "Buy" ? stop < entry && target > entry : stop > entry && target < entry;
+    const intent = decisionTradeIntent();
+    const directionValid = intent === "openShort" || intent === "addShort"
+      ? stop > entry && target < entry
+      : intent === "openLong" || intent === "addLong"
+        ? stop < entry && target > entry
+        : true;
     riskScore = directionValid ? Math.round((ratioScore + sizeScore) / 2) : 35;
   } else {
     riskScore = 88;
@@ -2593,6 +2946,28 @@ function updateResultCopy(scores) {
   document.querySelector("#disciplineScore").textContent = scores.disciplineScore;
   document.querySelector("#finalCoach").textContent = `${activeScenario.lesson} ${activeScenario.coach.watch}`;
   sessionResults.set(activeScenario.id, scores);
+}
+
+function directionalReplayMessage(markPrice) {
+  if (!isShortTradeIntent()) return null;
+  const entry = Number(getValue("entry")) || activeScenario.plan.entry;
+  return markPrice < entry
+    ? "Sellers regained control. The short thesis is working."
+    : "Price is rising. Risk to the short is increasing.";
+}
+
+function directionalReplayComplete() {
+  if (!isShortTradeIntent()) return activeScenario.replayComplete;
+  return scenarioMarketMovePercent() < 0
+    ? "The breakdown confirmed the bearish thesis"
+    : "Price reclaimed resistance and invalidated the bearish thesis";
+}
+
+function guidedOutcomeMessage() {
+  if (!isShortTradeIntent()) return activeScenario.lesson;
+  return scenarioMarketMovePercent() < 0
+    ? "Resistance held. The breakdown confirmed the bearish thesis."
+    : "Price reclaimed resistance and invalidated the bearish thesis.";
 }
 
 function wait(milliseconds) {
@@ -2696,6 +3071,27 @@ function animateXrayTo(target, duration, frequency) {
   });
 }
 
+function animateTeachingIntensityTo(target, duration = 240) {
+  if (reducedMotionQuery.matches) {
+    chartTeachingIntensity = target;
+    drawTradeChart();
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    const startedAt = performance.now();
+    const start = chartTeachingIntensity;
+    function frame(now) {
+      const progress = Math.min(1, (now - startedAt) / duration);
+      const eased = progress * progress * (3 - 2 * progress);
+      chartTeachingIntensity = start + (target - start) * eased;
+      drawTradeChart();
+      if (progress < 1) window.requestAnimationFrame(frame);
+      else resolve();
+    }
+    window.requestAnimationFrame(frame);
+  });
+}
+
 async function animatePatternXray() {
   const reviewToken = ++automatedReviewToken;
   xrayProgress = 0;
@@ -2705,35 +3101,37 @@ async function animatePatternXray() {
   revealWalkthrough.classList.add("is-visible");
   const source = activeScenario.annotation.stages;
   const stages = [
-    source[0], source[1], source[4], source[3], source[2], source[6], source[5],
-    { status: "Defining invalidation", focus: "invalidation", frequency: 440, message: `The stop at ${formatPrice(activeScenario.plan.stop)} marked where the idea would be wrong.` },
-    { status: "Reading the outcome", focus: "outcome", frequency: 523.25, message: activeScenario.lesson }
+    source[0], source[1], source[3], source[2], source[5], source[6],
+    { status: "Marking the entry", focus: "entry", frequency: 493.88, message: isShortTradeIntent() ? "The short entry came after bearish confirmation." : "The long entry came after bullish confirmation." },
+    { status: "Defining invalidation", focus: "invalidation", frequency: 440, message: "If price reaches here, your thesis has been invalidated." },
+    { status: "Reading the outcome", focus: "outcome", frequency: 523.25, message: guidedOutcomeMessage() }
   ].filter(Boolean);
 
   for (let index = 0; index < stages.length; index += 1) {
     if (reviewToken !== automatedReviewToken || guidedReviewPhase !== "guidedTeaching") return false;
     const stage = stages[index];
     stopCoachAudio();
-    chartTeachingIntensity = 0;
-    chartTeachingFocus = null;
-    drawTradeChart();
-    await animateXrayTo((index + 1) / stages.length, reducedMotionQuery.matches ? 1 : 420, stage.frequency || 392);
+    await animateTeachingIntensityTo(0, 190);
     if (reviewToken !== automatedReviewToken) return false;
     revealText.classList.add("is-changing");
     await wait(reducedMotionQuery.matches ? 1 : 120);
     revealBody.textContent = stage.message;
     chartStatus.textContent = `${index + 1} of ${stages.length} / ${stage.status}`;
     chartTeachingFocus = stage.focus;
-    chartTeachingIntensity = 0.92;
+    chartTeachingIntensity = 0;
     revealText.classList.remove("is-changing");
     drawTradeChart();
+    playTone(stage.frequency || 392, 0, 0.12, 0.012, "sine");
+    await animateTeachingIntensityTo(0.94, 260);
     void speakCoachLine(stage.message, "discovery");
     await wait(reducedMotionQuery.matches ? 520 : Math.max(1800, Math.min(2600, stage.message.split(/\s+/).length * 105)));
   }
 
   stopCoachAudio();
+  await animateTeachingIntensityTo(0, 220);
   chartTeachingFocus = null;
   chartTeachingIntensity = 0;
+  inlineCoachPlacement = null;
   revealWalkthrough.classList.remove("is-visible");
   await wait(reducedMotionQuery.matches ? 1 : 240);
   revealWalkthrough.hidden = true;
@@ -2992,6 +3390,17 @@ function configureCoachLesson(scores) {
     feedbackWatchText.textContent = activeScenario.coach.watch;
   }
 
+  if (isShortTradeIntent()) {
+    const shortWon = scenarioMarketMovePercent() < 0;
+    document.querySelector("#coachBody").textContent = shortWon
+      ? "Resistance held. Sellers regained control. The breakdown confirmed the bearish thesis."
+      : "Price reclaimed resistance and invalidated the bearish thesis.";
+    feedbackWellText.textContent = "Your entry, stop, target, and account result were evaluated as a Short trade.";
+    feedbackWatchText.textContent = shortWon
+      ? "A profitable Short still needs defined risk because losses increase as price rises."
+      : "The stop above entry defined where seller control had failed.";
+  }
+
   feedbackLessonText.textContent = activeScenario.coach.lesson;
   lessonEndingLine.textContent = scores.overall >= 84
     ? activeScenario.lesson
@@ -3114,6 +3523,7 @@ async function prepareGuidedReviewTransition(sequenceId) {
   labWorkspace.classList.add("is-pattern-reveal");
   decisionLab.classList.add("is-reflecting");
   currentStep = "replay";
+  labWorkspace.dataset.step = "replay";
   stepLabel.textContent = "Step 4 of 5";
   stepName.textContent = "Guided Review";
   progressFill.style.width = "100%";
@@ -3140,7 +3550,8 @@ function showCompletedPoster(sequenceId) {
   setGuidedReviewPhase("completedPoster");
   chartTeachingFocus = null;
   chartTeachingIntensity = 0;
-  xrayProgress = 1;
+  inlineCoachPlacement = null;
+  xrayProgress = 0;
   xrayOpacity = 1;
   patternDiscoveryLabel.classList.remove("is-visible");
   patternDiscoveryLabel.hidden = true;
@@ -3311,7 +3722,7 @@ async function runReplay({ transitionPrepared = false } = {}) {
     updatePracticePositionDuringReplay(futureCloses[futureCloses.length - 1]);
     chartScrollProgress = 0;
     drawTradeChart();
-    showReplayMessage(activeScenario.replayComplete);
+    showReplayMessage(directionalReplayComplete());
     await wait(450);
     hideReplayMessage();
   } else {
@@ -3321,7 +3732,7 @@ async function runReplay({ transitionPrepared = false } = {}) {
       chartScrollProgress = 1;
       playTick(index);
       const replayCue = activeScenario.replayMessages.find((message) => message.at === index);
-      if (replayCue) showReplayMessage(replayCue.text);
+      if (replayCue) showReplayMessage(directionalReplayMessage(futureCloses[index - 1]) || replayCue.text);
       await animateChartScroll(560);
       if (replayCue) hideReplayMessage();
       if (sequenceId !== guidedReviewSequenceId) {
@@ -4507,9 +4918,11 @@ function resetSession({ resetCapital = false } = {}) {
     practiceCapital = STARTING_PRACTICE_CAPITAL;
     practiceAccount = {
       cash: STARTING_PRACTICE_CAPITAL,
+      positionSide: "Flat",
       positionUnits: 0,
       positionEntry: 0,
       positionMark: 0,
+      reservedShortProceeds: 0,
       unrealizedPL: 0,
       realizedPL: 0
     };
@@ -4518,6 +4931,7 @@ function resetSession({ resetCapital = false } = {}) {
   lockedDecision = null;
   capitalCommitted = false;
   lastPositionSource = "amount";
+  lastConfiguredTradeIntent = null;
   lastRiskLevel = null;
   renderPracticeCapital(null, resetCapital ? "Starting balance" : "Current balance");
   replayRunning = false;
@@ -4529,6 +4943,7 @@ function resetSession({ resetCapital = false } = {}) {
   xrayOpacity = 1;
   chartTeachingFocus = null;
   chartTeachingIntensity = 0;
+  inlineCoachPlacement = null;
   studyModeActive = false;
   studyEvaluationRunning = false;
   studyPoint = null;
