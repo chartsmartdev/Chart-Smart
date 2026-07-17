@@ -289,6 +289,9 @@ const chartCoachCueText = document.querySelector("#chartCoachCueText");
 const revealWalkthrough = document.querySelector("#revealWalkthrough");
 const revealText = document.querySelector("#revealText");
 const revealBody = document.querySelector("#revealBody");
+const guidedLessonPanel = document.querySelector("#guidedLessonPanel");
+const guidedLessonSteps = document.querySelector("#guidedLessonSteps");
+const guidedReplaySpeed = document.querySelector("#guidedReplaySpeed");
 const reviewPosterNext = document.querySelector("#reviewPosterNext");
 const tradeDebriefSummary = document.querySelector("#tradeDebriefSummary");
 const debriefDecisionQuality = document.querySelector("#debriefDecisionQuality");
@@ -391,6 +394,9 @@ let xrayProgress = 0;
 let xrayOpacity = 1;
 let chartTeachingFocus = null;
 let chartTeachingIntensity = 0;
+let teachingTransition = { from: null, to: null, progress: 1 };
+let guidedTeachingStepIndex = -1;
+let guidedTeachingStages = [];
 let studyModeActive = false;
 let studyPoint = null;
 let studyFeedback = "idle";
@@ -580,9 +586,8 @@ function candleIndexRange(start, end) {
   return Array.from({ length: last - first + 1 }, (_, offset) => first + offset);
 }
 
-function teachingCandleSelection() {
-  const focus = chartTeachingFocus;
-  if (!focus || chartTeachingIntensity <= 0 || guidedReviewPhase !== "guidedTeaching" || focus === "outcome") {
+function teachingCandleSelection(focus) {
+  if (!focus || guidedReviewPhase !== "guidedTeaching" || focus === "outcome" || focus === "invalidation") {
     return { active: false, candleIndexes: new Set(), volumeIndexes: new Set() };
   }
   const annotation = activeScenario.annotation;
@@ -617,6 +622,37 @@ function teachingCandleSelection() {
   };
 }
 
+function lerp(start, end, progress) {
+  return start + (end - start) * progress;
+}
+
+function teachingBarStyle(index) {
+  const fromSelection = teachingCandleSelection(teachingTransition.from);
+  const toSelection = teachingCandleSelection(teachingTransition.to);
+  const progress = teachingTransition.progress;
+  const alphaFor = (selection) => !selection.active || selection.candleIndexes.has(index) ? 1 : 0.38;
+  const glowFor = (selection) => selection.active && selection.candleIndexes.has(index) ? 1 : 0;
+  const volumeAlphaFor = (selection, focus) => {
+    if (!selection.active) return 1;
+    if (focus === "volume") return selection.volumeIndexes.has(index) ? 1 : 0.28;
+    return 0.42;
+  };
+  return {
+    candleAlpha: lerp(alphaFor(fromSelection), alphaFor(toSelection), progress),
+    candleGlow: lerp(glowFor(fromSelection), glowFor(toSelection), progress),
+    volumeAlpha: lerp(
+      volumeAlphaFor(fromSelection, teachingTransition.from),
+      volumeAlphaFor(toSelection, teachingTransition.to),
+      progress
+    ),
+    volumeGlow: lerp(
+      fromSelection.volumeIndexes.has(index) ? 1 : 0,
+      toSelection.volumeIndexes.has(index) ? 1 : 0,
+      progress
+    )
+  };
+}
+
 function drawTradeChart() {
   if (!tradeChart || tradeChart.offsetParent === null) return;
   const { context, width, height } = setupCanvas(tradeChart);
@@ -643,7 +679,6 @@ function drawTradeChart() {
   const candleWidth = Math.max(4, Math.min(12, slot * (replaySpacingActive ? 0.62 : 0.56)));
   const maxVolume = Math.max(...candles.map((item) => item.volume));
   const plotRight = width - right;
-  const teachingSelection = teachingCandleSelection();
 
   context.fillStyle = "#f4f6f5";
   context.fillRect(plotRight, 0, right, height);
@@ -681,9 +716,9 @@ function drawTradeChart() {
     const index = renderStart + localIndex;
     const x = left + slot * (index - firstIndex + chartScrollProgress) + slot / 2;
     const up = candle.close >= candle.open;
-    const isTeachingCandle = teachingSelection.candleIndexes.has(index);
-    const isTeachingVolume = teachingSelection.volumeIndexes.has(index);
-    const candleAlpha = teachingSelection.active ? (isTeachingCandle ? 1 : 0.38) : 1;
+    const teachingStyle = teachingBarStyle(index);
+    const isTeachingCandle = teachingStyle.candleGlow > 0.04;
+    const isTeachingVolume = teachingStyle.volumeGlow > 0.04;
     const color = up
       ? (isTeachingCandle ? "#71ffc1" : "#57f0aa")
       : (isTeachingCandle ? "#ff979d" : "#ff7d7d");
@@ -695,12 +730,12 @@ function drawTradeChart() {
     const bodyHeight = Math.max(2, Math.abs(closeY - openY));
 
     context.save();
-    context.globalAlpha = candleAlpha;
+    context.globalAlpha = teachingStyle.candleAlpha;
     context.strokeStyle = color;
     context.lineWidth = isTeachingCandle ? 1.8 : 1.35;
     if (isTeachingCandle) {
       context.shadowColor = color;
-      context.shadowBlur = 7 * chartTeachingIntensity;
+      context.shadowBlur = 7 * teachingStyle.candleGlow;
     }
     context.beginPath();
     context.moveTo(x, highY);
@@ -712,15 +747,13 @@ function drawTradeChart() {
 
     const volumeTop = volumeBase - (candle.volume / maxVolume) * volumeHeight;
     context.save();
-    context.globalAlpha = teachingSelection.active
-      ? (chartTeachingFocus === "volume" ? (isTeachingVolume ? 1 : 0.28) : 0.42)
-      : 1;
+    context.globalAlpha = teachingStyle.volumeAlpha;
     context.fillStyle = isTeachingVolume
       ? (up ? "rgba(87, 240, 170, 0.82)" : "rgba(255, 125, 125, 0.82)")
       : (up ? "rgba(78, 227, 160, 0.28)" : "rgba(242, 118, 118, 0.28)");
     if (isTeachingVolume) {
       context.shadowColor = up ? "#57f0aa" : "#ff7d7d";
-      context.shadowBlur = 7 * chartTeachingIntensity;
+      context.shadowBlur = 7 * teachingStyle.volumeGlow;
     }
     context.fillRect(x - candleWidth / 2, volumeTop, candleWidth, volumeBase - volumeTop);
     context.restore();
@@ -759,6 +792,7 @@ function drawTradeChart() {
   drawTradePlanOverlay(context, geometry);
   if (crosshair.active) drawCrosshair(context, geometry);
   drawTeachingSpotlight(context, geometry);
+  drawProgressiveTeachingAnnotations(context, geometry);
   drawCoachAttention(context, geometry);
   placeInlineCoaching(geometry);
   drawInlineCoachLeader(context, geometry);
@@ -770,7 +804,8 @@ function drawTradeChart() {
 function drawTradePlanOverlay(context, geometry) {
   const action = getValue("action");
   const visible = ["plan", "review", "commit", "replay"].includes(currentStep) || capitalCommitted;
-  if (!visible || guidedReviewPhase === "guidedTeaching" || xrayProgress > 0 || chartTeachingFocus || studyModeActive || (action !== "Buy" && action !== "Sell")) return;
+  const historicalRevealActive = guidedReviewPhase !== "idle" && guidedReviewPhase !== "tradeDebrief";
+  if (!visible || historicalRevealActive || xrayProgress > 0 || chartTeachingFocus || studyModeActive || (action !== "Buy" && action !== "Sell")) return;
 
   const plan = getTradePlan();
   if (!plan.valid) return;
@@ -1217,6 +1252,130 @@ function drawInlineCoachLeader(context, geometry) {
   context.restore();
 }
 
+function guidedAnnotationProgress(requiredStep) {
+  if (guidedTeachingStepIndex < requiredStep) return 0;
+  if (guidedTeachingStepIndex > requiredStep) return 1;
+  return teachingTransition.progress;
+}
+
+function drawGuidedLevel(context, geometry, { price, startIndex, endIndex, color, label, progress, dashed = false, alpha = 1 }) {
+  if (!Number.isFinite(price) || progress <= 0) return;
+  const y = priceScale(price, geometry.minPrice, geometry.maxPrice, geometry.top, geometry.priceHeight);
+  const startX = pointFor(startIndex, price, geometry).x;
+  const fullEndX = pointFor(endIndex, price, geometry).x;
+  const endX = startX + (fullEndX - startX) * progress;
+  context.save();
+  context.globalAlpha = alpha;
+  context.strokeStyle = color;
+  context.lineWidth = 1.35;
+  if (dashed) context.setLineDash([6, 5]);
+  context.beginPath();
+  context.moveTo(startX, y);
+  context.lineTo(endX, y);
+  context.stroke();
+  context.setLineDash([]);
+  if (progress > 0.72) {
+    const text = `${label} ${formatPrice(price)}`;
+    context.font = '700 10px Consolas, "Courier New", monospace';
+    const textWidth = context.measureText(text).width;
+    const labelX = Math.min(geometry.width - geometry.right - textWidth - 8, endX + 7);
+    context.fillStyle = "rgba(4, 14, 11, 0.78)";
+    context.fillRect(labelX - 4, y - 10, textWidth + 8, 16);
+    context.fillStyle = color;
+    context.fillText(text, labelX, y + 2);
+  }
+  context.restore();
+}
+
+function drawProgressiveTeachingAnnotations(context, geometry) {
+  if (!["guidedTeaching", "completedPoster"].includes(guidedReviewPhase) || guidedTeachingStepIndex < 0) return;
+  const annotation = activeScenario.annotation;
+  const plotRight = geometry.width - geometry.right;
+  const currentStepAlpha = (requiredStep) => guidedTeachingStepIndex === requiredStep ? 0.92 : 0.34;
+
+  context.save();
+  context.beginPath();
+  context.rect(geometry.left, geometry.top, plotRight - geometry.left, geometry.volumeBase - geometry.top);
+  context.clip();
+  context.lineCap = "round";
+  context.lineJoin = "round";
+
+  const channelProgress = guidedAnnotationProgress(1);
+  if (channelProgress > 0 && annotation.pattern?.lines?.length) {
+    context.globalAlpha = guidedTeachingStepIndex === 1 ? 0.9 : guidedTeachingStepIndex <= 4 ? 0.55 : 0.28;
+    context.strokeStyle = "#8bb5ff";
+    context.lineWidth = 1.4;
+    annotation.pattern.lines.slice(0, 2).forEach((line) => {
+      const start = annotationPoint(line[0], geometry);
+      const end = annotationPoint(line[1], geometry);
+      drawAnimatedLine(context, start, end, channelProgress, "#8bb5ff", 1.4);
+    });
+  }
+
+  const resistanceProgress = guidedAnnotationProgress(2);
+  if (annotation.resistance) {
+    drawGuidedLevel(context, geometry, {
+      price: annotation.resistance.price,
+      startIndex: annotation.resistance.start,
+      endIndex: annotation.resistance.end,
+      color: "#f0be67",
+      label: "RESISTANCE",
+      progress: resistanceProgress,
+      dashed: true,
+      alpha: currentStepAlpha(2)
+    });
+  }
+
+  const supportProgress = guidedAnnotationProgress(3);
+  if (annotation.support) {
+    drawGuidedLevel(context, geometry, {
+      price: annotation.support.price,
+      startIndex: annotation.support.start,
+      endIndex: annotation.support.end,
+      color: "#57f0aa",
+      label: "SUPPORT",
+      progress: supportProgress,
+      alpha: currentStepAlpha(3)
+    });
+  }
+
+  const plan = getTradePlan();
+  if (plan.valid) {
+    const lineStart = Math.max(0, (annotation.breakout?.index || visibleCloses.length - 1) - 7);
+    const lineEnd = Math.min(candles.length - 1, (annotation.breakout?.index || visibleCloses.length - 1) + 3);
+    drawGuidedLevel(context, geometry, {
+      price: plan.entry,
+      startIndex: lineStart,
+      endIndex: lineEnd,
+      color: "#f0be67",
+      label: "ENTRY",
+      progress: guidedAnnotationProgress(6),
+      alpha: currentStepAlpha(6)
+    });
+    drawGuidedLevel(context, geometry, {
+      price: plan.stop,
+      startIndex: lineStart,
+      endIndex: lineEnd,
+      color: "#ff7d7d",
+      label: "STOP",
+      progress: guidedAnnotationProgress(7),
+      dashed: true,
+      alpha: currentStepAlpha(7)
+    });
+    drawGuidedLevel(context, geometry, {
+      price: plan.target,
+      startIndex: lineStart,
+      endIndex: lineEnd,
+      color: "#57f0aa",
+      label: "TARGET",
+      progress: guidedAnnotationProgress(8),
+      dashed: true,
+      alpha: currentStepAlpha(8)
+    });
+  }
+  context.restore();
+}
+
 function drawCoachAttention(context, geometry) {
   if (!chartTeachingFocus || chartTeachingIntensity <= 0) return;
   const annotation = activeScenario.annotation;
@@ -1256,7 +1415,7 @@ function drawCoachAttention(context, geometry) {
     if (showLabels) drawAttentionLabel(context, annotation.trend.label, middle.x - 42, middle.y + 16, geometry, amber);
   }
 
-  if ((focus === "support" || focus === "resistance") && annotation[focus]) {
+  if ((focus === "support" || focus === "resistance") && annotation[focus] && guidedReviewPhase !== "guidedTeaching") {
     const level = annotation[focus];
     const color = focus === "support" ? green : amber;
     const start = pointFor(level.start, level.price, geometry);
@@ -1315,7 +1474,7 @@ function drawCoachAttention(context, geometry) {
     if (showLabels) drawAttentionLabel(context, annotation.volume.label, labelPoint.x + 14, labelPoint.y + 5, geometry, color);
   }
 
-  if (focus === "entry") {
+  if (focus === "entry" && guidedReviewPhase !== "guidedTeaching") {
     const entry = getTradePlan().entry || activeScenario.plan.entry;
     const y = priceScale(entry, geometry.minPrice, geometry.maxPrice, geometry.top, geometry.priceHeight);
     const endIndex = Math.min(candles.length - 1, (annotation.breakout?.index || visibleCloses.length - 1) + 2);
@@ -1329,7 +1488,7 @@ function drawCoachAttention(context, geometry) {
     context.stroke();
   }
 
-  if (focus === "invalidation") {
+  if (focus === "invalidation" && guidedReviewPhase !== "guidedTeaching") {
     const stop = getTradePlan().stop || activeScenario.plan.stop;
     const y = priceScale(stop, geometry.minPrice, geometry.maxPrice, geometry.top, geometry.priceHeight);
     const startX = pointFor(Math.max(0, visibleCloses.length - 12), stop, geometry).x;
@@ -3071,21 +3230,88 @@ function animateXrayTo(target, duration, frequency) {
   });
 }
 
-function animateTeachingIntensityTo(target, duration = 240) {
+function buildGuidedTeachingStages() {
+  const source = activeScenario.annotation.stages;
+  return [
+    { ...source[0], title: "Trend" },
+    { ...source[1], title: "The Flag" },
+    { ...source[3], title: "Resistance" },
+    { ...source[2], title: "Support" },
+    { ...source[5], title: "Breakout" },
+    { ...source[6], title: "Volume" },
+    {
+      title: "Entry",
+      status: "Marking the entry",
+      focus: "entry",
+      frequency: 493.88,
+      message: isShortTradeIntent() ? "Bearish confirmation established the short entry." : "Bullish confirmation established the long entry."
+    },
+    {
+      title: "Invalidation",
+      status: "Defining invalidation",
+      focus: "invalidation",
+      frequency: 440,
+      message: "The stop marks where the trade thesis is invalidated."
+    },
+    {
+      title: "Outcome",
+      status: "Reading the outcome",
+      focus: "outcome",
+      frequency: 523.25,
+      message: guidedOutcomeMessage()
+    }
+  ].filter((stage) => stage?.message);
+}
+
+function renderGuidedLessonSteps(stages, activeIndex = -1) {
+  guidedLessonSteps.replaceChildren();
+  stages.forEach((stage, index) => {
+    const item = document.createElement("li");
+    item.className = index === activeIndex ? "is-active" : index < activeIndex ? "is-complete" : "";
+    if (index === activeIndex) item.setAttribute("aria-current", "step");
+    const number = document.createElement("span");
+    number.className = "guided-step-number";
+    number.textContent = String(index + 1);
+    const copy = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = stage.title;
+    const message = document.createElement("p");
+    message.textContent = stage.message;
+    copy.append(title, message);
+    item.append(number, copy);
+    guidedLessonSteps.append(item);
+  });
+  const activeItem = guidedLessonSteps.children[activeIndex];
+  activeItem?.scrollIntoView({ block: "nearest", behavior: reducedMotionQuery.matches ? "auto" : "smooth" });
+}
+
+function guidedStageDuration(stage) {
+  if (reducedMotionQuery.matches) return 560;
+  const longStage = stage.focus === "pattern" || stage.focus === "breakout" || stage.focus === "outcome";
+  const baseDuration = longStage ? 5600 : 4000;
+  const speed = guidedReplaySpeed?.value || "normal";
+  const multiplier = speed === "slow" ? 1.25 : speed === "fast" ? 0.8 : 1;
+  return Math.round(baseDuration * multiplier);
+}
+
+function animateTeachingFocusTo(focus, duration = 420) {
+  const previousFocus = teachingTransition.to;
+  teachingTransition = { from: previousFocus, to: focus, progress: 0 };
+  chartTeachingFocus = focus;
+  chartTeachingIntensity = 0.94;
+  inlineCoachPlacement = null;
   if (reducedMotionQuery.matches) {
-    chartTeachingIntensity = target;
+    teachingTransition.progress = 1;
     drawTradeChart();
     return Promise.resolve();
   }
   return new Promise((resolve) => {
     const startedAt = performance.now();
-    const start = chartTeachingIntensity;
     function frame(now) {
-      const progress = Math.min(1, (now - startedAt) / duration);
-      const eased = progress * progress * (3 - 2 * progress);
-      chartTeachingIntensity = start + (target - start) * eased;
+      const rawProgress = Math.min(1, (now - startedAt) / duration);
+      teachingTransition.progress = rawProgress * rawProgress * (3 - 2 * rawProgress);
       drawTradeChart();
-      if (progress < 1) window.requestAnimationFrame(frame);
+      if (rawProgress < 1) window.requestAnimationFrame(frame);
       else resolve();
     }
     window.requestAnimationFrame(frame);
@@ -3099,42 +3325,27 @@ async function animatePatternXray() {
   revealWalkthrough.hidden = false;
   void revealWalkthrough.offsetWidth;
   revealWalkthrough.classList.add("is-visible");
-  const source = activeScenario.annotation.stages;
-  const stages = [
-    source[0], source[1], source[3], source[2], source[5], source[6],
-    { status: "Marking the entry", focus: "entry", frequency: 493.88, message: isShortTradeIntent() ? "The short entry came after bearish confirmation." : "The long entry came after bullish confirmation." },
-    { status: "Defining invalidation", focus: "invalidation", frequency: 440, message: "If price reaches here, your thesis has been invalidated." },
-    { status: "Reading the outcome", focus: "outcome", frequency: 523.25, message: guidedOutcomeMessage() }
-  ].filter(Boolean);
+  guidedTeachingStages = buildGuidedTeachingStages();
+  guidedLessonPanel.hidden = false;
+  renderGuidedLessonSteps(guidedTeachingStages);
+  teachingTransition = { from: null, to: null, progress: 1 };
 
-  for (let index = 0; index < stages.length; index += 1) {
+  for (let index = 0; index < guidedTeachingStages.length; index += 1) {
     if (reviewToken !== automatedReviewToken || guidedReviewPhase !== "guidedTeaching") return false;
-    const stage = stages[index];
+    const stage = guidedTeachingStages[index];
     stopCoachAudio();
-    await animateTeachingIntensityTo(0, 190);
-    if (reviewToken !== automatedReviewToken) return false;
-    revealText.classList.add("is-changing");
-    await wait(reducedMotionQuery.matches ? 1 : 120);
+    guidedTeachingStepIndex = index;
     revealBody.textContent = stage.message;
-    chartStatus.textContent = `${index + 1} of ${stages.length} / ${stage.status}`;
-    chartTeachingFocus = stage.focus;
-    chartTeachingIntensity = 0;
-    revealText.classList.remove("is-changing");
-    drawTradeChart();
+    chartStatus.textContent = `${index + 1} of ${guidedTeachingStages.length} / ${stage.status}`;
+    renderGuidedLessonSteps(guidedTeachingStages, index);
     playTone(stage.frequency || 392, 0, 0.12, 0.012, "sine");
-    await animateTeachingIntensityTo(0.94, 260);
+    await animateTeachingFocusTo(stage.focus, reducedMotionQuery.matches ? 1 : 420);
+    if (reviewToken !== automatedReviewToken) return false;
     void speakCoachLine(stage.message, "discovery");
-    await wait(reducedMotionQuery.matches ? 520 : Math.max(1800, Math.min(2600, stage.message.split(/\s+/).length * 105)));
+    await wait(Math.max(0, guidedStageDuration(stage) - (reducedMotionQuery.matches ? 1 : 420)));
   }
 
   stopCoachAudio();
-  await animateTeachingIntensityTo(0, 220);
-  chartTeachingFocus = null;
-  chartTeachingIntensity = 0;
-  inlineCoachPlacement = null;
-  revealWalkthrough.classList.remove("is-visible");
-  await wait(reducedMotionQuery.matches ? 1 : 240);
-  revealWalkthrough.hidden = true;
   drawTradeChart();
   return reviewToken === automatedReviewToken;
 }
@@ -3594,6 +3805,7 @@ async function openTradeDebriefFromPoster() {
   decisionLab.classList.remove("is-reflecting");
   labWorkspace.classList.remove("is-pattern-reveal");
   labWorkspace.classList.add("is-debrief");
+  guidedLessonPanel.hidden = true;
   decisionPanel.classList.remove("is-coach-arrival");
   decisionPanel.classList.add("is-debrief");
   renderTradeDebrief(latestScores);
@@ -4943,6 +5155,9 @@ function resetSession({ resetCapital = false } = {}) {
   xrayOpacity = 1;
   chartTeachingFocus = null;
   chartTeachingIntensity = 0;
+  teachingTransition = { from: null, to: null, progress: 1 };
+  guidedTeachingStepIndex = -1;
+  guidedTeachingStages = [];
   inlineCoachPlacement = null;
   studyModeActive = false;
   studyEvaluationRunning = false;
@@ -4952,6 +5167,8 @@ function resetSession({ resetCapital = false } = {}) {
   chartCoachCue.hidden = true;
   revealWalkthrough.classList.remove("is-visible");
   revealWalkthrough.hidden = true;
+  guidedLessonPanel.hidden = true;
+  guidedLessonSteps.replaceChildren();
   revealText.classList.remove("is-changing");
   chartStudyPanel.classList.remove("is-visible");
   chartStudyPanel.hidden = true;

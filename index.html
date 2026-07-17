@@ -8,7 +8,7 @@
   <meta property="og:title" content="Chart Smart Decision Lab">
   <meta property="og:description" content="Financial IQ. Not Financial Advice. Practice the decision before you see the outcome.">
   <title>Chart Smart Decision Lab</title>
-  <link rel="stylesheet" href="css/styles.css?v=20260717-candle-spotlight-1">
+  <link rel="stylesheet" href="css/styles.css?v=20260717-historical-reveal-1">
 </head>
 <body>
   <main>
@@ -148,6 +148,23 @@
 
       <div class="lab-workspace">
         <section class="chart-stage" aria-labelledby="chart-heading">
+          <aside class="guided-lesson-panel" id="guidedLessonPanel" aria-label="Guided Review lesson steps" hidden>
+            <header>
+              <div>
+                <span>Historical Reveal</span>
+                <strong>Guided Review</strong>
+              </div>
+              <label for="guidedReplaySpeed">
+                <span>Replay speed</span>
+                <select id="guidedReplaySpeed">
+                  <option value="slow">Slow</option>
+                  <option value="normal" selected>Normal</option>
+                  <option value="fast">Fast</option>
+                </select>
+              </label>
+            </header>
+            <ol class="guided-lesson-steps" id="guidedLessonSteps"></ol>
+          </aside>
           <div class="chart-toolbar">
             <div>
               <span class="status-dot"></span>
@@ -528,6 +545,6 @@
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="js/config.js"></script>
   <script src="js/audio-manifest.js"></script>
-  <script src="js/main.js?v=20260717-account-review-2"></script>
+  <script src="js/main.js?v=20260717-historical-reveal-1"></script>
 </body>
 </html>
